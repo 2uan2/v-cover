@@ -119,11 +119,14 @@ class AICaller:
 
         # API base exception for OpenAI Compatible, Ollama, and Hugging Face models
         if "ollama" in self.model or "huggingface" in self.model or self.model.startswith("openai/"):
+            print(f"model: {self.model}, api_base: {self.api_base}")
             completion_params["api_base"] = self.api_base
 
         try:
             self.logger.info(f"📣 Calling LLM from {caller_name}()...")
+            print(f"completion_params: {completion_params}")
             response = litellm.completion(**completion_params)
+            print(f"AI caller response: {response}")
         except Exception as e:
             self.logger.error(f"Error calling LLM model: {e}")
             raise e

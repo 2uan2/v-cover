@@ -84,6 +84,12 @@ class LanguageServer:
             )
 
             return JediServer(config, logger, repository_root_path)
+        elif config.code_language == Language.JAVA:
+            from cover_agent.lsp_logic.multilspy.language_servers.eclipse_jdtls.eclipse_jdtls import (
+                EclipseJDTLS,
+            )
+
+            return EclipseJDTLS(config, logger, repository_root_path)
         else:
             logger.log(
                 f"Language {config.code_language} is not supported", logging.ERROR
@@ -170,19 +176,25 @@ class LanguageServer:
 
         :param relative_file_path: The relative path of the file to open.
         """
+        print("Enter open_file")
         if not self.server_started:
             self.logger.log(
                 "open_file called before Language Server started",
                 logging.ERROR,
             )
             raise MultilspyException("Language Server not started")
-
+        print("Server started")
         absolute_file_path = str(
             PurePath(self.repository_root_path, relative_file_path)
         )
+        print("Absolute file path: ", absolute_file_path)
+        path = pathlib.Path(absolute_file_path)
+        print("Path: ", path)
         uri = pathlib.Path(absolute_file_path).as_uri()
-
+        print("URI: ", uri)
+        print(f"Opening file: {absolute_file_path} with uri: {uri}")
         if uri in self.open_file_buffers:
+            print("Into uri in open_file_buffers")
             assert self.open_file_buffers[uri].uri == uri
             assert self.open_file_buffers[uri].ref_count >= 1
 
@@ -190,8 +202,9 @@ class LanguageServer:
             yield
             self.open_file_buffers[uri].ref_count -= 1
         else:
+            print("Into uri not in open_file_buffers")
             contents = FileUtils.read_file(self.logger, absolute_file_path)
-
+            print(f"file contents: {contents}")
             version = 0
             self.open_file_buffers[uri] = LSPFileBuffer(
                 uri, contents, version, self.language_id, 1
@@ -219,6 +232,7 @@ class LanguageServer:
                 }
             )
             del self.open_file_buffers[uri]
+        print(f"Open file: {absolute_file_path} with uri: {uri} done")
 
     def insert_text_at_position(
         self, relative_file_path: str, line: int, column: int, text_to_be_inserted: str
@@ -367,13 +381,16 @@ class LanguageServer:
         """
 
         if not self.server_started:
+            print("Language Server not started")
             self.logger.log(
                 "find_function_definition called before Language Server started",
                 logging.ERROR,
             )
             raise MultilspyException("Language Server not started")
-
+        print(f"LS relative_file_path: {relative_file_path}")
         with self.open_file(relative_file_path):
+            print("open file successfully")
+            print("line: ", line, "column: ", column)
             # sending request to the language server and waiting for response
             response = await self.server.send.definition(
                 {
@@ -388,7 +405,8 @@ class LanguageServer:
                     },
                 }
             )
-
+            print(f"open file response: {response}")
+        print(f"response: {response}")
         ret: List[multilspy_types.Location] = []
         if isinstance(response, list):
             # response is either of type Location[] or LocationLink[]
@@ -700,6 +718,7 @@ class LanguageServer:
         return multilspy_types.Hover(**response)
 
     async def get_direct_context(self, captures, language, project_dir, rel_file):
+        print(f"captures: {captures}")
         target_file = str(os.path.join(project_dir, rel_file))
         skip_found_symbols = True
         context_files = set()
@@ -710,10 +729,12 @@ class LanguageServer:
             if name_symbol in context_symbols and skip_found_symbols:
                 continue
             # getting direct context - which files are referenced by the target file
+            print("get direct context for symbol: ", name_symbol)
             try:
                 symbol_definition = await self.request_definition(
                     rel_file, line=ref[0].start_point[0], column=ref[0].start_point[1]
                 )
+                print(f"symbol_definition: {symbol_definition}")
                 # sleep(0.01)
             except:
                 symbol_definition = []
@@ -734,6 +755,7 @@ class LanguageServer:
                         context_files.add(d_path)
                         context_symbols.add(name_symbol)
                         context_symbols_and_files.add((name_symbol, rel_d_path))
+        print(f"context_files: {context_files}, context_symbols: {context_symbols}")
         return context_files, context_symbols
 
     async def get_reverse_context(self, captures, project_dir, rel_file):

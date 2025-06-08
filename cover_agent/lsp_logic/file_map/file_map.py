@@ -37,6 +37,7 @@ class FileMap:
             print(f"File {fname_full_path} does not exist")
         with open(fname_full_path, "r") as f:
             code = f.read()
+        print(f"code file_map: {code}")
         self.code = code.rstrip("\n") + "\n"
         self.parent_context = parent_context
         self.child_context = child_context
@@ -86,7 +87,9 @@ class FileMap:
     def get_query_results(self):
         fname_rel = self.fname_rel
         code = self.code
+        print(f"code: {code}")
         lang = filename_to_lang(fname_rel)
+        print(f"lang: {lang}")
         if not lang:
             return
 
@@ -98,10 +101,13 @@ class FileMap:
             return
 
         query_scheme_str = get_queries_scheme(lang)
+        print(f"query_scheme_str: {query_scheme_str}")
         tree = parser.parse(bytes(code, "utf-8"))
+        print(f"tree: {tree.root_node}")
 
         # Run the queries
         query = language.query(query_scheme_str)
+        print(f"query: {query}")
         captures = list(query.captures(tree.root_node))
 
         # Parse the results into a list of "def" and "ref" tags

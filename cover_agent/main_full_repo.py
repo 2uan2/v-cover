@@ -13,7 +13,7 @@ async def run():
     settings = get_settings().get("default")
     args = parse_args_full_repo(settings)
 
-    if args.project_language == "python":
+    if args.project_language == "python" or args.project_language == "java":
         context_helper = ContextHelper(args)
     else:
         raise NotImplementedError("Unsupported language: {}".format(args.project_language))

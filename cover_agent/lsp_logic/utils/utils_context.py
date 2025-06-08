@@ -69,6 +69,8 @@ async def find_test_file_context(args, lsp, test_file):
     try:
         target_file = test_file
         rel_file = os.path.relpath(target_file, args.project_root)
+        print(f"test_file: {test_file}")
+        print(f"Rel_file: {rel_file}")
 
         # get tree-sitter query results
         # print("\nGetting tree-sitter query results for the target file...")
@@ -79,6 +81,7 @@ async def find_test_file_context(args, lsp, test_file):
             header_max=0,
             project_base_path=args.project_root,
         )
+        print(f"fname_summary: {fname_summary}")
         query_results, captures = fname_summary.get_query_results()
         # print("Tree-sitter query results for the target file done.")
 
@@ -104,7 +107,7 @@ async def find_test_file_context(args, lsp, test_file):
 async def initialize_language_server(args):
     logger = MultilspyLogger()
     config = MultilspyConfig.from_dict({"code_language": args.project_language})
-    if args.project_language == "python":
+    if args.project_language == "python" or args.project_language == "java":
         lsp = LanguageServer.create(config, logger, args.project_root)
         sleep(0.1)
         return lsp

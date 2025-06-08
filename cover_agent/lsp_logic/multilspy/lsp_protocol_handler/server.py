@@ -376,6 +376,7 @@ class LanguageServerHandler:
         """
         Send request to the server, register the request id, and wait for the response
         """
+        print(f"method: {method}, params: {params}")
         request = Request()
         request_id = self.request_id
         self.request_id += 1
@@ -385,6 +386,7 @@ class LanguageServerHandler:
             await request.cv.wait()
         if isinstance(request.error, Error):
             raise request.error
+        print(f"Request {method} with id {request_id} completed successfully. {request.result}")
         return request.result
 
     def _send_payload_sync(self, payload: StringDict) -> None:
@@ -405,6 +407,7 @@ class LanguageServerHandler:
         if not self.process or not self.process.stdin:
             return
         msg = create_message(payload)
+        print(f"message: {msg}")
         if self.logger:
             self.logger("client", "server", payload)
         self.process.stdin.writelines(msg)
