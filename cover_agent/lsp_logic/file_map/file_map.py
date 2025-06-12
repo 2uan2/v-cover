@@ -86,9 +86,7 @@ class FileMap:
     def get_query_results(self):
         fname_rel = self.fname_rel
         code = self.code
-        print(f"code: {code}")
         lang = filename_to_lang(fname_rel)
-        print(f"lang: {lang}")
         if not lang:
             return
 

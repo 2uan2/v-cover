@@ -156,7 +156,6 @@ async def find_test_file_context(args, lsp, test_file):
             potential_primary = find_java_primary_file(test_file, args.project_root)
             if potential_primary:
                 primary_file = potential_primary
-                print(f"Found primary source file: {primary_file}")
                 context_files.append(primary_file)
 
         # print("Getting context done.")

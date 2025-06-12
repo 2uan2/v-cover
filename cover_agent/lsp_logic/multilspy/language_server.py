@@ -723,7 +723,6 @@ class LanguageServer:
                         context_files.add(d_path)
                         context_symbols.add(name_symbol)
                         context_symbols_and_files.add((name_symbol, rel_d_path))
-        print(f"context_files: {context_files}, context_symbols: {context_symbols}")
         return context_files, context_symbols
 
     async def get_reverse_context(self, captures, project_dir, rel_file):

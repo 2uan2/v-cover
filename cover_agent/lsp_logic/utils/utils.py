@@ -420,7 +420,6 @@ def printable_shell_command(cmd_list):
 
 
 def uri_to_path(uri):
-    print(f"uri: {uri}")
     return unquote(urlparse(uri).path)
 
 
