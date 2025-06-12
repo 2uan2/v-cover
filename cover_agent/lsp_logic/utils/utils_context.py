@@ -12,6 +12,63 @@ from cover_agent.settings.config_loader import get_settings
 from cover_agent.utils import load_yaml
 
 
+def find_java_primary_file(test_file, project_root):
+    """
+    Find the primary source file for a Java test file based on naming conventions.
+
+    Args:
+        test_file: Path to the test file
+        project_root: Root directory of the project
+
+    Returns:
+        Path to the primary source file if found, None otherwise
+    """
+    test_filename = os.path.basename(test_file)
+    test_dir = os.path.dirname(test_file)
+
+    # Common Java test naming patterns
+    test_suffixes = ["Test", "Tests", "TestCase", "IT", "IntegrationTest"]
+
+    # Try to find the source file by removing test suffixes
+    for suffix in test_suffixes:
+        if test_filename.endswith(suffix + ".java"):
+            source_filename = test_filename[: -len(suffix + ".java")] + ".java"
+
+            # Look in common source locations relative to test location
+            possible_paths = []
+
+            # If test is in src/test/java, look in src/main/java
+            if "src/test/java" in test_file:
+                source_path = (
+                    test_file.replace("src/test/java", "src/main/java")
+                    .replace(test_filename, source_filename)
+                )
+                possible_paths.append(source_path)
+
+            # Look in the same package structure but different source roots
+            rel_path = os.path.relpath(test_dir, project_root)
+            for src_dir in ["src/main/java", "src/java", "src"]:
+                if src_dir in rel_path:
+                    continue
+                potential_path = os.path.join(
+                    project_root,
+                    src_dir,
+                    rel_path.replace("src/test/java", "").replace("test", "").strip("/"),
+                    source_filename,
+                )
+                possible_paths.append(potential_path)
+
+            # Also check in the same directory (for simple projects)
+            possible_paths.append(os.path.join(test_dir, source_filename))
+
+            # Check if any of the possible paths exist
+            for path in possible_paths:
+                if os.path.exists(path):
+                    return path
+
+    return None
+
+
 async def analyze_context(test_file, context_files, args, ai_caller):
     """
     # we now want to analyze the test file against the source files and determine several things:
@@ -69,8 +126,6 @@ async def find_test_file_context(args, lsp, test_file):
     try:
         target_file = test_file
         rel_file = os.path.relpath(target_file, args.project_root)
-        print(f"test_file: {test_file}")
-        print(f"Rel_file: {rel_file}")
 
         # get tree-sitter query results
         # print("\nGetting tree-sitter query results for the target file...")
@@ -81,7 +136,6 @@ async def find_test_file_context(args, lsp, test_file):
             header_max=0,
             project_base_path=args.project_root,
         )
-        print(f"fname_summary: {fname_summary}")
         query_results, captures = fname_summary.get_query_results()
         # print("Tree-sitter query results for the target file done.")
 
@@ -96,6 +150,15 @@ async def find_test_file_context(args, lsp, test_file):
                 if f.read().strip():
                     context_files_filtered.append(file)
         context_files = context_files_filtered
+
+        # For Java files, try to find the primary source file
+        if args.project_language == "java" and test_file.endswith(".java"):
+            potential_primary = find_java_primary_file(test_file, args.project_root)
+            if potential_primary:
+                primary_file = potential_primary
+                print(f"Found primary source file: {primary_file}")
+                context_files.append(primary_file)
+
         # print("Getting context done.")
     except Exception as e:
         print(f"Error while getting context for test file {test_file}: {e}")

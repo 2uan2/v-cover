@@ -124,9 +124,7 @@ class AICaller:
 
         try:
             self.logger.info(f"📣 Calling LLM from {caller_name}()...")
-            print(f"completion_params: {completion_params}")
             response = litellm.completion(**completion_params)
-            print(f"AI caller response: {response}")
         except Exception as e:
             self.logger.error(f"Error calling LLM model: {e}")
             raise e

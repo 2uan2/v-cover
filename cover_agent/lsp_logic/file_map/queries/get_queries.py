@@ -6,7 +6,6 @@ def get_queries_scheme(lang: str) -> str:
     try:
         # Load the relevant queries
         curr_path = Path(__file__).parent
-        print(f"curr_path: {curr_path}")
         path = os.path.join(curr_path, f"tree-sitter-{lang}-tags.scm")
         with open(path, "r") as f:
             return f.read()
