@@ -53,6 +53,10 @@
                         </goals>
                     </execution>
                 </executions>
+                <configuration>
+                <!-- This will overwrite old reports -->
+                <append>false</append>
+              </configuration>
             </plugin>
         </plugins>
     </build>
