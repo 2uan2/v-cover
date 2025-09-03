@@ -83,6 +83,81 @@ class FileMap:
         output += self.render_file_summary(def_lines)
         return output
 
+    def get_imports(self):
+        fname_rel = self.fname_rel
+        code = self.code
+        lang = filename_to_lang(fname_rel)
+        if not lang:
+            return []
+
+        try:
+            language = get_language(lang)
+            parser = get_parser(lang)
+        except Exception as err:
+            print(f"Skipping file {fname_rel}: {err}")
+            return []
+
+        query_scheme_str = get_queries_scheme(lang)
+        tree = parser.parse(bytes(code, "utf-8"))
+
+        # Run the queries
+        query = language.query(query_scheme_str)
+        captures = list(query.captures(tree.root_node))
+
+        results = []
+        for node, tag in captures:
+            if tag == "import":
+                # print("--------")
+                # print("node: ", node.text.decode("utf-8"))
+                # print("tag: ", tag)
+                result = dict(
+                    fname=fname_rel,
+                    name=node.text.decode("utf-8"),
+                )
+                results.append(result)
+
+        return results
+
+    def get_unit_tests(self) -> list:
+        fname_rel = self.fname_rel
+        code = self.code
+        lang = filename_to_lang(fname_rel)
+        if not lang:
+            return []
+
+        try:
+            language = get_language(lang)
+            parser = get_parser(lang)
+        except Exception as err:
+            print(f"Skipping file {fname_rel}: {err}")
+            return []
+
+        query_scheme_str = get_queries_scheme(lang)
+        tree = parser.parse(bytes(code, "utf-8"))
+
+        # Run the queries
+        query = language.query(query_scheme_str)
+        captures = list(query.captures(tree.root_node))
+
+        results = []
+        for node, tag in captures:
+            if tag == "test":
+                # print("--------")
+                # print("node: ", node)
+                # print("tag: ", tag)
+                result = dict(
+                    fname=fname_rel,
+                    name=node.text.decode("utf-8"),
+                    line=node.start_point[0],
+                    column=node.start_point[
+                        1
+                    ],  # in order to find indentation or test file
+                )
+                results.append(result)
+
+        # print("results are: ", results)
+        return results
+
     def get_query_results(self):
         fname_rel = self.fname_rel
         code = self.code

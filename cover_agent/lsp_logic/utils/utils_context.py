@@ -39,10 +39,9 @@ def find_java_primary_file(test_file, project_root):
 
             # If test is in src/test/java, look in src/main/java
             if "src/test/java" in test_file:
-                source_path = (
-                    test_file.replace("src/test/java", "src/main/java")
-                    .replace(test_filename, source_filename)
-                )
+                source_path = test_file.replace(
+                    "src/test/java", "src/main/java"
+                ).replace(test_filename, source_filename)
                 possible_paths.append(source_path)
 
             # Look in the same package structure but different source roots
@@ -53,7 +52,9 @@ def find_java_primary_file(test_file, project_root):
                 potential_path = os.path.join(
                     project_root,
                     src_dir,
-                    rel_path.replace("src/test/java", "").replace("test", "").strip("/"),
+                    rel_path.replace("src/test/java", "")
+                    .replace("test", "")
+                    .strip("/"),
                     source_filename,
                 )
                 possible_paths.append(potential_path)
@@ -102,7 +103,8 @@ async def analyze_context(test_file, context_files, args, ai_caller):
             prompt={"system": system_prompt, "user": user_prompt}, stream=False
         )
         response_dict = load_yaml(response)
-        if int(response_dict.get("is_this_a_unit_test", 0)) == 1:
+        # if int(response_dict.get("is_this_a_unit_test", 0)) == 1:
+        if int(response_dict.get("is_unit_test", 0)) == 1:
             source_file_rel = response_dict.get("main_file", "").strip().strip("`")
             source_file = os.path.join(args.project_root, source_file_rel)
             for file in context_files:
