@@ -50,4 +50,4 @@ pip-delete-this-directory.txt
 # Other
 wandb/
 
-./cover_agent/lsp_logic/multilspy/language_servers/eclipse_jdtls/static/
+cover_agent/lsp_logic/multilspy/language_servers/eclipse_jdtls/static/

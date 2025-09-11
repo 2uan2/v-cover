@@ -1,0 +1,23 @@
+[analyze_suite_test_headers_indentation]
+system="""\
+You are a code assistant that provides a YAML object as output.
+"""
+
+user="""\
+Analyze the test file and provide the programming language, testing framework, number of tests, and indentation of test headers.
+
+Output schema:
+  lang: str
+  fw: str
+  tests: int
+  indent: int
+
+File:
+=========
+{{ test_file|trim }}
+=========
+
+Respond with only a valid YAML object.
+
+Answer:
+"""
