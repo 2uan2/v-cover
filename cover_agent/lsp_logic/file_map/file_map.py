@@ -3,6 +3,7 @@ from pathlib import Path
 
 from grep_ast import TreeContext
 from grep_ast.parsers import PARSERS, filename_to_lang
+from tree_sitter import Node
 
 # from pygments.lexers import guess_lexer_for_filename
 # from pygments.token import Token
@@ -82,10 +83,110 @@ class FileMap:
         output += query_results[0]["fname"] + ":\n"
         output += self.render_file_summary(def_lines)
         return output
-
-    def get_query_results(self):
+    
+    def get_range(self, line: int) -> list[tuple[int, int]]:
         fname_rel = self.fname_rel
         code = self.code
+        lang = filename_to_lang(fname_rel)
+        if not lang:
+            return
+
+        try:
+            language = get_language(lang)
+            parser = get_parser(lang)
+        except Exception as err:
+            print(f"Skipping file {fname_rel}: {err}")
+            return
+
+        query_scheme_str = get_queries_scheme(lang)
+        tree = parser.parse(bytes(code, "utf-8"))
+
+        # Run the queries
+        query = language.query(query_scheme_str)
+        captures: list[tuple[Node, str]] = list(query.captures(tree.root_node))
+        # print("================")
+        # print("query: ", query)
+        # print("---")
+        # print("captures: ", captures)
+        potential = []
+        for capture in captures:
+            # print("lololololaaaaaaaaaaaaaaaaaa")
+            # print(capture)
+            start_line: int = capture[0].start_point[0]
+            end_line: int = capture[0].end_point[0]
+            is_method: bool = capture[1].endswith("method")
+            # print("start: ", start_line)
+            # print("end: ", end_line)
+            # start and end line not the same to make sure a function span more than a line, or should it?
+            # since lambda functions might span only a line
+            if (line <= end_line and line >= start_line and start_line != end_line):# and is_method):
+                potential.append((start_line, end_line))
+        # print("potential range: ", potential)
+        return potential
+
+    def get_query_results_in_range(self, start_line: int = 0, end_line: int = -1) -> tuple[list[dict], list] | None:
+        '''
+            get tree-sitter query results from a certain range
+        '''
+        fname_rel = self.fname_rel
+        code = self.code
+        # code_sub_section = "\n".join(code.split("\n")[start_line:end_line])
+        # print("code sub section: ", code_sub_section)
+        lang = filename_to_lang(fname_rel)
+        if not lang:
+            return
+
+        try:
+            language = get_language(lang)
+            parser = get_parser(lang)
+        except Exception as err:
+            print(f"Skipping file {fname_rel}: {err}")
+            return
+
+        query_scheme_str = get_queries_scheme(lang)
+        tree = parser.parse(bytes(code, "utf-8"))
+
+        # Run the queries
+        query = language.query(query_scheme_str)
+        captures: tuple[Node, str] = list(query.captures(tree.root_node))
+
+        # Parse the results into a list of "def" and "ref" tags
+        visited_set = set()
+        results = []
+        for node, tag in captures:
+            # filter based on range
+            if node.start_point[0] > start_line and (node.end_point[0] < end_line or end_line == -1):
+                if tag.startswith("name.definition."):
+                    kind = "def"
+                elif tag.startswith("name.reference."):
+                    kind = "ref"
+                else:
+                    continue
+
+                visited_set.add(kind)
+                result = dict(
+                    fname=fname_rel,
+                    name=node.text.decode("utf-8"),
+                    kind=kind,
+                    column=node.start_point[1],
+                    start=node.start_point[0],
+                    end=node.end_point[0],
+                )
+                results.append(result)
+
+        if "ref" in visited_set:
+            return results, captures
+        if "def" not in visited_set:
+            return results, captures
+
+        return results, captures
+
+    def get_query_results(self) -> tuple[list[dict], list]:
+        fname_rel = self.fname_rel
+        code = self.code
+        # print("=========================")
+        # print("code is: ", code.split('\n'))
+        # print("=========================")
         lang = filename_to_lang(fname_rel)
         if not lang:
             return
@@ -149,4 +250,4 @@ class FileMap:
         #         line=-1,
         #     )
         #     results.append(result)
-        return results, captures
+        return results, captures # results from functions are rarely used anywhere, maybe remove?? 

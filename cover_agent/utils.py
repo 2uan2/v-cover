@@ -4,7 +4,8 @@ import logging
 import os
 import re
 
-from typing import List
+from typing import List, Union
+from pathlib import Path
 
 import yaml
 
@@ -344,7 +345,7 @@ def parse_args_full_repo(settings: Dynaconf) -> argparse.Namespace:
     return parser.parse_args()
 
 
-def find_test_files(args) -> list:
+def find_test_files(args: argparse.Namespace) -> list[Union[str, Path]]:
     """
     Scan the project directory for test files.
     """

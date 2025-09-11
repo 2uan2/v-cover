@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import copy
 import logging
@@ -14,7 +15,7 @@ from cover_agent.testable_file_finder import TestableFileFinder
 from cover_agent.test_file_generator import TestFileGenerator
 
 
-async def process_test_file(test_file, context_helper, ai_caller, args, logger, task_id):
+async def process_test_file(test_file: Union[str, Path], context_helper: ContextHelper, ai_caller: AICaller, args: argparse.Namespace, logger, task_id):
     """Process a single test file asynchronously."""
     try:
         print(f"\n[Task {task_id}] Processing test file: {test_file} at {datetime.datetime.now()}")
@@ -78,7 +79,7 @@ async def run():
     logger.setLevel(logging.INFO)
 
     settings = get_settings().get("default")
-    args = parse_args_full_repo(settings)
+    args: argparse.Namespace = parse_args_full_repo(settings)
 
     if args.project_language == "python" or args.project_language == "java":
         context_helper = ContextHelper(args)
@@ -90,7 +91,7 @@ async def run():
     all_testable_files = testable_finder.find_testable_files()
     
     # scan the project directory for test files
-    test_files = find_test_files(args)
+    test_files: list[Union[str, Path]] = find_test_files(args)
 
     print("\n============\nTest files to be extended:\n" + "".join(f"{f}\n============\n" for f in test_files))
 
