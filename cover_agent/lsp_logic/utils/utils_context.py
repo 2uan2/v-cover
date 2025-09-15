@@ -123,15 +123,16 @@ async def analyze_context(test_file, context_files, args, ai_caller):
 
     return source_file, context_files_include
 
-async def find_all_context(args: argparse.Namespace, lsp: LanguageServer, test_file: Path) -> list[tuple[int, int, int]]:
+async def find_all_context(args: argparse.Namespace, lsp: LanguageServer, test_file: Path) -> list[tuple[str, str, int, int]]:
     context_files = [] #set()
+    # visited = set()
 
     await _recursive_search(0, args, test_file, context_files, lsp)
 
     return context_files
 
 
-async def _recursive_search(call_num: int, args: argparse.Namespace, file: Path, dependency_list: list[tuple], lsp: LanguageServer, range: tuple[int, int] = (0, -1), visited_set = set()):
+async def _recursive_search(call_num: int, args: argparse.Namespace, file: Path, dependency_list: list[tuple], lsp: LanguageServer, visited: set[tuple] = set(), range: tuple[int, int] = (0, -1)):
     # print("call number: ", call_num)
     # print("+++++")
     # print(dependency_list)
@@ -176,8 +177,13 @@ async def _recursive_search(call_num: int, args: argparse.Namespace, file: Path,
             )
             context_ranges: list[tuple[int, int]] = fm.get_range(line)
             context_range = context_ranges[-1] # choose the context range as the last element for now which is the smallest range [(9, 46), (22, 25)]
-            dependency_list.append((context_file, symbol, context_range[0], context_range[1]))
-            await _recursive_search(call_num, args, context_file, dependency_list, lsp, context_range)
+            dependency: tuple = (context_file, symbol, context_range[0], context_range[1])
+            # if dependency in visited: 
+            #     print(f"dependency {dependency} already found inside visited set {visited}")
+            if dependency not in visited:
+                dependency_list.append(dependency)
+                visited.add(dependency)
+                await _recursive_search(call_num, args, context_file, dependency_list, lsp, visited, context_range)
 
 
 

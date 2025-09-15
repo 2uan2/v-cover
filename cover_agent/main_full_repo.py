@@ -20,7 +20,8 @@ async def process_test_file(test_file: Union[str, Path], context_helper: Context
     try:
         print(f"\n[Task {task_id}] Processing test file: {test_file} at {datetime.datetime.now()}")
         # Find the context files for the test file
-        context_files = await context_helper.find_test_file_context(test_file)
+        all_context = await context_helper.find_all_context(test_file)
+        context_files: list[Path] = [ context_file for context_file, _, _ in all_context ]
         print("[Task {}] Context files for test file '{}':\n{}".format(task_id, test_file, "".join(f"{f}\n" for f in context_files)))
 
         # Analyze the test file against the context files

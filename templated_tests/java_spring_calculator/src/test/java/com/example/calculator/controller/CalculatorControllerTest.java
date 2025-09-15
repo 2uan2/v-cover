@@ -12,37 +12,53 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.when;
 
 class CalculatorControllerTest {
-	@Mock
-	private CalculatorHelper calculatorHelper;
+    @InjectMocks
+    private CalculatorController calculatorController;
 
-	@InjectMocks
-	private CalculatorController calculatorController;
+    @Mock
+    private CalculatorHelper calculatorHelper;
 
-	@BeforeEach
-	void setUp() {
-		MockitoAnnotations.openMocks(this);
-	}
+    @BeforeEach
+    void setUp() {
+        MockitoAnnotations.openMocks(this);
+    }
 
-	@Test
-	void testAddNumbersSuccessfully() {
-		when(calculatorController.add(10.0, 5.0)).thenReturn(15.0);
+    @Test
+    void testAddNumbersSuccessfully() {
+        double result = calculatorController.add(10.0, 5.0);
 
-		// Call the method on the class under test.
-		double result = calculatorController.add(10.0, 5.0);
+        assertEquals(15.0, result);
+    }
 
-		// Assert that the returned value is what we expect.
-		assertEquals(15.0, result);
-	}
+    @Test
+    void testPowerOperation() {
+        double base = 2.0;
+        double exponent = 3.0;
+        double expectedResult = 8.0;
 
-	@Test
-	void testCreateCalculationResult() {
-		// This test shows a dependency on the CalculationResult model class.
-		// We're creating an instance of the class directly.
-		CalculationResult result = new CalculationResult(10, 5, 50.0);
+        when(calculatorHelper.power(base, exponent)).thenReturn(expectedResult);
 
-		// Verify the values are set correctly.
-		assertEquals(10, result.getOperand1());
-		assertEquals(5, result.getOperand2());
-		assertEquals(50.0, result.getResult());
-	}
+        double actualResult = calculatorController.power(base, exponent);
+
+        assertEquals(expectedResult, actualResult, "The power calculation result should match the stubbed value.");
+    }
+
+    @Test
+    void testCalculationResultGetters() {
+        // Arrange: Define the input values and the expected result
+        double operand1 = 10.0;
+        double operand2 = 5.0;
+        double result = 15.0;
+
+        // Act: Create an instance of the CalculationResult class
+        CalculationResult calculationResult = new CalculationResult(operand1, operand2, result);
+
+        // Assert: Verify that the getter methods return the expected values
+        assertEquals(operand1, calculationResult.getOperand1(),
+                "The first operand should match the value set in the constructor.");
+        assertEquals(operand2, calculationResult.getOperand2(),
+                "The second operand should match the value set in the constructor.");
+        assertEquals(result, calculationResult.getResult(),
+                "The result should match the value set in the constructor.");
+    }
 }

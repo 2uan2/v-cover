@@ -2,5 +2,6 @@ import math
 
 import os
 
-def help():
-    print("AHHHHHHHHHHHHH")
+def greet():
+    print('hello world!!!')
+

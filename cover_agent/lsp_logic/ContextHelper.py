@@ -32,7 +32,7 @@ class ContextHelper:
         context_files = await find_test_file_context(self._args, self._lsp, test_file)
         return context_files
 
-    async def find_all_context(self, file: Path):
+    async def find_all_context(self, file: Path) -> list[tuple[str, str, int, int]]:
         if not self._lsp:
             raise ValueError(
                 "Language server not initialized. Please call start_server() first."
