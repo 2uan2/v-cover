@@ -16,6 +16,8 @@ from cover_agent.runner import Runner
 from cover_agent.settings.config_loader import get_settings
 from cover_agent.settings.config_schema import CoverageType
 from cover_agent.utils import load_yaml
+from cover_agent.lsp_logic.utils.utils_indent import find_indentation_amount
+from cover_agent.lsp_logic.utils.utils_insert_line import find_import_insert_line, find_unit_test_insert_line
 
 
 class UnitTestValidator:
@@ -196,6 +198,7 @@ class UnitTestValidator:
         try:
             settings = get_settings().get("default")
             test_headers_indentation = None
+            test_headers_indentation = find_indentation_amount(self.language, self.project_root, self.test_file)
             allowed_attempts = settings.get("test_headers_indentation_attempts", 3)
             counter_attempts = 0
             while test_headers_indentation is None and counter_attempts < allowed_attempts:
@@ -221,8 +224,8 @@ class UnitTestValidator:
                     f"Failed to analyze the test headers indentation. YAML response: {response}. tests_dict: {tests_dict}"
                 )
 
-            relevant_line_number_to_insert_tests_after = None
-            relevant_line_number_to_insert_imports_after = None
+            relevant_line_number_to_insert_tests_after = find_unit_test_insert_line(self.language, self.project_root, self.test_file_path)
+            relevant_line_number_to_insert_imports_after = find_import_insert_line(self.language, self.project_root, self.test_file_path)
             counter_attempts = 0
             while not relevant_line_number_to_insert_tests_after and counter_attempts < allowed_attempts:
                 response, prompt_token_count, response_token_count, prompt = (

@@ -83,7 +83,16 @@ class FileMap:
         output += self.render_file_summary(def_lines)
         return output
 
-    def get_imports(self):
+    def get_imports(self) -> list[dict]:
+        '''
+            find all import lines inside current file using tree-sitter
+        '''
+        return self.get_tag("import")
+
+    def get_tag(self, tag: str) -> list[dict]:
+        '''
+            find custom tree-sitter node with tag == tag
+        '''
         fname_rel = self.fname_rel
         code = self.code
         lang = filename_to_lang(fname_rel)
@@ -105,58 +114,25 @@ class FileMap:
         captures = list(query.captures(tree.root_node))
 
         results = []
-        for node, tag in captures:
-            if tag == "import":
-                # print("--------")
-                # print("node: ", node.text.decode("utf-8"))
-                # print("tag: ", tag)
+        for node, capture_tag in captures:
+            if capture_tag == tag:
                 result = dict(
                     fname=fname_rel,
                     name=node.text.decode("utf-8"),
-                )
-                results.append(result)
-
-        return results
-
-    def get_unit_tests(self) -> list:
-        fname_rel = self.fname_rel
-        code = self.code
-        lang = filename_to_lang(fname_rel)
-        if not lang:
-            return []
-
-        try:
-            language = get_language(lang)
-            parser = get_parser(lang)
-        except Exception as err:
-            print(f"Skipping file {fname_rel}: {err}")
-            return []
-
-        query_scheme_str = get_queries_scheme(lang)
-        tree = parser.parse(bytes(code, "utf-8"))
-
-        # Run the queries
-        query = language.query(query_scheme_str)
-        captures = list(query.captures(tree.root_node))
-
-        results = []
-        for node, tag in captures:
-            if tag == "test":
-                # print("--------")
-                # print("node: ", node)
-                # print("tag: ", tag)
-                result = dict(
-                    fname=fname_rel,
-                    name=node.text.decode("utf-8"),
-                    line=node.start_point[0],
-                    column=node.start_point[
-                        1
-                    ],  # in order to find indentation or test file
+                    start_line=node.start_point[0],
+                    start_column=node.start_point[1],  # in order to find indentation or test file
+                    end_line=node.end_point[0],
                 )
                 results.append(result)
 
         # print("results are: ", results)
         return results
+
+    def get_functions(self) -> list[dict]:
+        '''
+            find all unit tests in current file using tree-sitter
+        '''
+        return self.get_tag("test")
 
     def get_query_results(self):
         fname_rel = self.fname_rel
