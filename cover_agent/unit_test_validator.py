@@ -16,7 +16,7 @@ from cover_agent.runner import Runner
 from cover_agent.settings.config_loader import get_settings
 from cover_agent.settings.config_schema import CoverageType
 from cover_agent.utils import load_yaml
-from cover_agent.lsp_logic.utils.utils_indent import find_indentation_amount
+from cover_agent.lsp_logic.utils.utils_indent import find_indentation_amount, find_framework
 from cover_agent.lsp_logic.utils.utils_insert_line import find_import_insert_line, find_unit_test_insert_line
 
 
@@ -259,6 +259,10 @@ class UnitTestValidator:
                 raise Exception(
                     f"Failed to analyze the relevant line number to insert new imports. tests_dict: {tests_dict}"
                 )
+            # if not found testing_framework using LLM call then use normal functions
+            if self.testing_framework.lower() == "unknown":
+                self.testing_framework = find_framework(self.language, self.project_root, self.test_file_path)
+
 
             self.test_headers_indentation = test_headers_indentation
             self.relevant_line_number_to_insert_tests_after = relevant_line_number_to_insert_tests_after

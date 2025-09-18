@@ -18,6 +18,8 @@ from cover_agent.unit_test_db import UnitTestDB
 from cover_agent.unit_test_generator import UnitTestGenerator
 from cover_agent.unit_test_validator import UnitTestValidator
 
+from cover_agent.lsp_logic.utils.utils_adapt_command import adapt_test_command
+
 
 class CoverAgent:
     """
@@ -74,19 +76,10 @@ class CoverAgent:
         if hasattr(self.config, "run_each_test_separately") and self.config.run_each_test_separately:
             # Calculate a relative path for a test file
             test_file_relative_path = os.path.relpath(self.config.test_file_output_path, self.config.project_root)
-            # Handle pytest commands specifically
-            if "pytest" in test_command:
-                try:
-                    # Modify pytest command to target a single test file
-                    ind1 = test_command.index("pytest")
-                    ind2 = test_command[ind1:].index("--")
-                    new_command_line = (
-                        f"{test_command[:ind1]}pytest {test_file_relative_path} {test_command[ind1 + ind2:]}"
-                    )
-                except ValueError:
-                    self.logger.error(f"Failed to adapt test command for running a single test: {test_command}")
-            else:
-                # Use AI to adapt non-pytest test commands
+            # Handle commands from some known frameworks 
+            new_command_line = adapt_test_command(test_command, test_file_relative_path)
+            if not new_command_line:
+                # Use AI to adapt test commands
                 new_command_line, _, _, _ = self.agent_completion.adapt_test_command_for_a_single_test_via_ai(
                     test_file_relative_path=test_file_relative_path,
                     test_command=test_command,

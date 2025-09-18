@@ -109,6 +109,7 @@ def find_framework_from_imports(imports: list[str], language: str) -> str:
         },
     }
 
+    language = language.lower()
     if language in framework_patterns:
         for framework, patterns in framework_patterns[language].items():
             for pattern in patterns:
