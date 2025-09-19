@@ -1,4 +1,4 @@
-[analyze_suite_test_headers_indentation]
+[analyze_suite_test_headers_indentation_improved]
 system="""\
 You are a code assistant that provides a YAML object as output.
 """

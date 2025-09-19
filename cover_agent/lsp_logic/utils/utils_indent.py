@@ -18,7 +18,7 @@ def find_indentation_amount(language: str, project_root: str, test_file: str) ->
             project_base_path=project_root,
         )
         # query_results, captures =
-        results = fname_summary.get_unit_tests()
+        results = fname_summary.get_functions()
 
         number_of_tests = len(results)
         indentation_counter = Counter([result["start_column"] for result in results])

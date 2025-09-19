@@ -3,6 +3,7 @@ import copy
 import logging
 import datetime
 import os
+import argparse
 
 from cover_agent.ai_caller import AICaller
 from cover_agent.cover_agent_ import CoverAgent
@@ -14,7 +15,7 @@ from cover_agent.testable_file_finder import TestableFileFinder
 from cover_agent.test_file_generator import TestFileGenerator
 
 
-async def process_test_file(test_file, context_helper, ai_caller, args, logger, task_id):
+async def process_test_file(test_file: str, context_helper: ContextHelper, ai_caller: AICaller, args: argparse.Namespace, logger, task_id: int):
     """Process a single test file asynchronously."""
     try:
         print(f"\n[Task {task_id}] Processing test file: {test_file} at {datetime.datetime.now()}")

@@ -50,7 +50,7 @@ class AICaller:
         record_replay_manager: Optional[RecordReplayManager] = None,
         logger: Optional[CustomLogger] = None,
         generate_log_files: bool = True,
-        claude_code: bool = True,
+        claude_code: bool = False,
     ):
         """
         Initializes an instance of the AICaller class.

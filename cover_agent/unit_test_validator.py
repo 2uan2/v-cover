@@ -198,7 +198,7 @@ class UnitTestValidator:
         try:
             settings = get_settings().get("default")
             test_headers_indentation = None
-            test_headers_indentation = find_indentation_amount(self.language, self.project_root, self.test_file)
+            test_headers_indentation = find_indentation_amount(self.language, self.project_root, self.test_file_path)
             allowed_attempts = settings.get("test_headers_indentation_attempts", 3)
             counter_attempts = 0
             while test_headers_indentation is None and counter_attempts < allowed_attempts:
@@ -327,6 +327,7 @@ class UnitTestValidator:
         if included_files:
             included_files_content = []
             file_names = []
+            print(included_files)
             for file_path in included_files:
                 try:
                     with open(file_path, "r") as file:
