@@ -17,6 +17,7 @@ from cover_agent.settings.config_schema import CoverAgentConfig
 from cover_agent.unit_test_db import UnitTestDB
 from cover_agent.unit_test_generator import UnitTestGenerator
 from cover_agent.unit_test_validator import UnitTestValidator
+from cover_agent.build_tool_adapter import *
 
 from cover_agent.lsp_logic.utils.utils_adapt_command import adapt_test_command
 
@@ -33,6 +34,7 @@ class CoverAgent:
         self,
         config: CoverAgentConfig,
         agent_completion: AgentCompletionABC = None,
+        built_tool_adapter: Optional[BuiltToolAdapterABC] = None,
         logger: Optional[CustomLogger] = None,
     ):
         """
@@ -52,6 +54,7 @@ class CoverAgent:
         """
         self.config = config
         self.generate_log_files = not config.suppress_log_files
+        self.adapter = built_tool_adapter
 
         # Initialize logger with file generation flag
         self.logger = logger or CustomLogger.get_logger(__name__, generate_log_files=self.generate_log_files)
@@ -73,14 +76,18 @@ class CoverAgent:
         # Modify test command for a single test execution if needed
         test_command = self.config.test_command
         new_command_line = None
+        test_file_relative_path = os.path.relpath(self.config.test_file_output_path, self.config.project_root)
         if hasattr(self.config, "run_each_test_separately") and self.config.run_each_test_separately:
             # Calculate a relative path for a test file
-            test_file_relative_path = os.path.relpath(self.config.test_file_output_path, self.config.project_root)
             # Handle commands from some known frameworks 
-            new_command_line = adapt_test_command(test_command, test_file_relative_path)
+            if self.adapter:
+                new_command_line = self.adapter.adapt_test_command(test_file_relative_path) 
+            else:
+                new_command_line = adapt_test_command(test_command, test_file_relative_path)
+
             if not new_command_line:
-                # Use AI to adapt test commands
                 new_command_line, _, _, _ = self.agent_completion.adapt_test_command_for_a_single_test_via_ai(
+                # Use AI to adapt test commands
                     test_file_relative_path=test_file_relative_path,
                     test_command=test_command,
                     project_root_dir=self.config.test_command_dir,
@@ -99,6 +106,7 @@ class CoverAgent:
             source_file_path=self.config.source_file_path,
             test_file_path=self.config.test_file_output_path,
             project_root=self.config.project_root,
+            # code_coverage_report_path=self.adapter.get_coverage_path(test_file_relative_path) or self.config.code_coverage_report_path,
             code_coverage_report_path=self.config.code_coverage_report_path,
             test_command=self.config.test_command,
             test_command_dir=self.config.test_command_dir,

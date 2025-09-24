@@ -13,9 +13,10 @@ from cover_agent.settings.config_schema import CoverAgentConfig
 from cover_agent.utils import find_test_files, parse_args_full_repo
 from cover_agent.testable_file_finder import TestableFileFinder
 from cover_agent.test_file_generator import TestFileGenerator
+from cover_agent.build_tool_adapter import MavenAdapter
 
 
-async def process_test_file(test_file: str, context_helper: ContextHelper, ai_caller: AICaller, args: argparse.Namespace, logger, task_id: int):
+async def process_test_file(test_file: str, adapter: MavenAdapter, context_helper: ContextHelper, ai_caller: AICaller, args: argparse.Namespace, logger, task_id: int):
     """Process a single test file asynchronously."""
     try:
         print(f"\n[Task {task_id}] Processing test file: {test_file} at {datetime.datetime.now()}")
@@ -25,9 +26,10 @@ async def process_test_file(test_file: str, context_helper: ContextHelper, ai_ca
 
         # Analyze the test file against the context files
         print(f"\n[Task {task_id}] Analyzing test file against context files...")
-        source_file, context_files_include = await context_helper.analyze_context(
-            test_file, context_files, ai_caller
-        )
+        source_file, context_files_include = context_files[0], context_files[1:]
+        # source_file, context_files_include = await context_helper.analyze_context(
+        #     test_file, context_files, ai_caller
+        # )
 
         if source_file:
             try:
@@ -37,9 +39,11 @@ async def process_test_file(test_file: str, context_helper: ContextHelper, ai_ca
                 args_copy.test_command_dir = args.project_root
                 args_copy.test_file_path = test_file
                 args_copy.included_files = context_files_include
+                # args_copy.test_command = adapter.adapt_test_command(test_file)
+                args_copy.code_coverage_report_path = adapter.get_coverage_path(test_file)
 
                 config = CoverAgentConfig.from_cli_args_with_defaults(args_copy)
-                agent = CoverAgent(config)
+                agent = CoverAgent(config=config, built_tool_adapter=adapter)
                 agent.run()
                 return (test_file, True, None)
             except Exception as e:
@@ -146,10 +150,18 @@ async def run():
             print(f"✅ Successfully created: {len(successful_generations)} test files")
             print(f"❌ Failed: {len(failed_generations)} test files")
 
-        # Process all test files concurrently
-        tasks = [process_test_file(test_file, context_helper, ai_caller, args, logger, task_id) 
-                 for task_id, test_file in enumerate(test_files, 1)]
-        results = await asyncio.gather(*tasks)
+        adapter = MavenAdapter(args.test_command ,args.project_root)
+
+        try:
+            if adapter: 
+                adapter.prepare_environment()
+            # Process all test files concurrently
+            tasks = [process_test_file(test_file, adapter, context_helper, ai_caller, args, logger, task_id) 
+                     for task_id, test_file in enumerate(test_files, 1)]
+            results = await asyncio.gather(*tasks)
+        finally:
+            if adapter:
+                adapter.cleanup_environment()
         
         # Generate statistics
         print("\n" + "="*80)
