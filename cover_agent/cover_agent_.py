@@ -44,6 +44,8 @@ class CoverAgent:
             config (CoverAgentConfig): Configuration object containing all necessary settings for the agent.
             agent_completion (AgentCompletionABC, optional): Custom agent completion object. Defaults to None,
                 in which case a default completion object is initialized.
+            built_tool_adapter (BuiltToolAdapterABC, optional): Custom adapter for project's built tool. Defaults to None,
+                in which case method calls will fall back to default value
             logger (Optional[CustomLogger], optional): Custom logger instance. Defaults to None,
                 in which case a default logger is created.
 
