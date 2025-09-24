@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import copy
 import logging
@@ -16,12 +17,13 @@ from cover_agent.test_file_generator import TestFileGenerator
 from cover_agent.build_tool_adapter import MavenAdapter
 
 
-async def process_test_file(test_file: str, adapter: MavenAdapter, context_helper: ContextHelper, ai_caller: AICaller, args: argparse.Namespace, logger, task_id: int):
+async def process_test_file(test_file: Union[str, Path], adapter: MavenAdapter, context_helper: ContextHelper, ai_caller: AICaller, args: argparse.Namespace, logger, task_id: int):
     """Process a single test file asynchronously."""
     try:
         print(f"\n[Task {task_id}] Processing test file: {test_file} at {datetime.datetime.now()}")
         # Find the context files for the test file
-        context_files = await context_helper.find_test_file_context(test_file)
+        all_context = await context_helper.find_all_context(test_file)
+        context_files: list[Path] = [ context_file for context_file, _, _ in all_context ]
         print("[Task {}] Context files for test file '{}':\n{}".format(task_id, test_file, "".join(f"{f}\n" for f in context_files)))
 
         # Analyze the test file against the context files
@@ -83,7 +85,7 @@ async def run():
     logger.setLevel(logging.INFO)
 
     settings = get_settings().get("default")
-    args = parse_args_full_repo(settings)
+    args: argparse.Namespace = parse_args_full_repo(settings)
 
     if args.project_language == "python" or args.project_language == "java":
         context_helper = ContextHelper(args)
@@ -95,7 +97,7 @@ async def run():
     all_testable_files = testable_finder.find_testable_files()
     
     # scan the project directory for test files
-    test_files = find_test_files(args)
+    test_files: list[Union[str, Path]] = find_test_files(args)
 
     print("\n============\nTest files to be extended:\n" + "".join(f"{f}\n============\n" for f in test_files))
 

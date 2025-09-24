@@ -1,5 +1,7 @@
 import os
+import argparse
 from time import sleep
+from pathlib import Path
 
 from jinja2 import Environment, StrictUndefined
 
@@ -123,14 +125,135 @@ async def analyze_context(test_file, context_files, args, ai_caller):
 
     return source_file, context_files_include
 
+async def find_all_context(args: argparse.Namespace, lsp: LanguageServer, test_file: Path) -> list[tuple[str, str, int, int]]:
+    context_files = [] #set()
+    # visited = set()
 
-async def find_test_file_context(args, lsp, test_file):
+    await _recursive_search(0, args, test_file, context_files, lsp)
+
+    return context_files
+
+
+async def _recursive_search(call_num: int, args: argparse.Namespace, file: Path, dependency_list: list[tuple], lsp: LanguageServer, visited: set[tuple] = set(), range: tuple[int, int] = (0, -1)):
+    # print("call number: ", call_num)
+    # print("+++++")
+    # print(dependency_list)
+    call_num = call_num + 1
+    # find symbols in range
+    target_file = file
+    rel_file = os.path.relpath(file, args.project_root)
+    absolute_file = str(os.path.abspath(args.project_root))
+
+    fname_summary = FileMap(
+        target_file,
+        parent_context=False,
+        child_context=False,
+        header_max=0,
+        project_base_path=args.project_root,
+    )
+    query_results, captures = fname_summary.get_query_results_in_range(range[0], range[1])
+    # print("======")
+    # print("query_results, captures = ", len(query_results), len(captures))
+    # print("======")
+    # print("query results are found: ", query_results)
+    # print("captures: ", captures)
+
+    # contexts: list[file and line] = get_direct_context(symbols)
+    context_files_and_lines: set[tuple[str, str, int]] = await lsp.get_direct_context_file_and_line(
+        query_results, captures, args.project_language, args.project_root, rel_file
+    )
+
+    if (context_files_and_lines):
+        # print("     ===================")
+        # print("context files found from query results: ")
+        # print(context_files_and_lines)
+        # print("     ===================")
+        for context_file_and_line in context_files_and_lines:
+            context_file, symbol, line = context_file_and_line
+            fm = FileMap(
+                context_file,
+                parent_context=False,
+                child_context=False,
+                header_max=0,
+                project_base_path=args.project_root,
+            )
+            context_ranges: list[tuple[int, int]] = fm.get_range(line)
+            context_range = context_ranges[-1] # choose the context range as the last element for now which is the smallest range [(9, 46), (22, 25)]
+            dependency: tuple = (context_file, symbol, context_range[0], context_range[1])
+            # if dependency in visited: 
+            #     print(f"dependency {dependency} already found inside visited set {visited}")
+            if dependency not in visited:
+                dependency_list.append(dependency)
+                visited.add(dependency)
+                await _recursive_search(call_num, args, context_file, dependency_list, lsp, visited, context_range)
+
+
+
+
+async def find_test_file_context(args: argparse.Namespace, lsp: LanguageServer, test_file: Path) -> list[dict]:
+    '''
+        function to find all context files recursively, and return list of dictionary containing file path, start line and end line.
+    '''
     try:
         target_file = test_file
         rel_file = os.path.relpath(target_file, args.project_root)
+        absolute_file = str(os.path.abspath(args.project_root))
+        cwd = os.getcwd()
 
-        # get tree-sitter query results
-        # print("\nGetting tree-sitter query results for the target file...")
+        fname_summary = FileMap(
+            target_file,
+            parent_context=False,
+            child_context=False,
+            header_max=0,
+            project_base_path=args.project_root,
+        )
+        results = fname_summary.get_query_results_in_range()
+        # print("____________")
+        # print("results: ", results)
+        query_results, captures = results
+        # print("query results: ", query_results)
+        # print('types: ', results.__class__.__module__)
+        # print('captures:', captures[0][0].__class__)
+
+        context_files, context_symbols = await lsp.get_direct_context(
+            captures, args.project_language, args.project_root, rel_file
+        )
+        # print("\n".join([f"{context_files} for symbol {list(context_symbols)[i]}" for i, context_file in enumerate(list(context_files))]))
+        # print("context_symbols: ", context_symbols)
+        # filter empty files and files not in current working directory
+        context_files_filtered = []
+        for file in context_files:
+            if cwd in os.path.abspath(file):
+                with open(file, "r") as f:
+                    if f.read().strip() and cwd in absolute_file:
+                        context_files_filtered.append(file)
+        context_files = context_files_filtered
+        # print("context files FILTERED: ", context_files_filtered)
+
+        # For Java files, try to find the primary source file
+        if args.project_language == "java" and test_file.endswith(".java"):
+            potential_primary = find_java_primary_file(test_file, args.project_root)
+            if potential_primary:
+                primary_file = potential_primary
+                context_files.append(primary_file)
+
+        # print("Getting context done.")
+    except Exception as e:
+        print(f"Error while getting context for test file {test_file}: {e}")
+        context_files = []
+
+    return context_files
+
+async def find_test_file_direct_context(args: argparse.Namespace, lsp: LanguageServer, test_file: Path) -> list[str]:
+    '''
+        get the direct context of a test file, doesn't recursively find dependencies
+    '''
+    try:
+        target_file = test_file
+        rel_file = os.path.relpath(target_file, args.project_root)
+        absolute_file = str(os.path.abspath(args.project_root))
+        cwd = os.getcwd()
+
         fname_summary = FileMap(
             target_file,
             parent_context=False,
@@ -139,9 +262,7 @@ async def find_test_file_context(args, lsp, test_file):
             project_base_path=args.project_root,
         )
         query_results, captures = fname_summary.get_query_results()
-        # print("Tree-sitter query results for the target file done.")
 
-        # print("\nGetting context ...")
         context_files, context_symbols = await lsp.get_direct_context(
             captures, args.project_language, args.project_root, rel_file
         )
