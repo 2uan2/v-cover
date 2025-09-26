@@ -6,6 +6,7 @@ from typing import Optional
 from cover_agent.agent_completion_abc import AgentCompletionABC
 from cover_agent.custom_logger import CustomLogger
 from cover_agent.file_preprocessor import FilePreprocessor
+from cover_agent.unit_test_validator import UnitTestValidator
 from cover_agent.settings.config_loader import get_settings
 from cover_agent.utils import load_yaml
 
@@ -21,12 +22,14 @@ class UnitTestGenerator:
         agent_completion: AgentCompletionABC,
         test_command_dir: str = os.getcwd(),
         included_files: list = None,
+        all_included_files: list = None,
         coverage_type="cobertura",
         additional_instructions: str = "",
         use_report_coverage_feature_flag: bool = False,
         project_root: str = "",
         logger: Optional[CustomLogger] = None,
         generate_log_files: bool = True,
+        task_id: int = 0,
     ):
         """
         Initialize the UnitTestGenerator class with the provided parameters.
@@ -49,6 +52,7 @@ class UnitTestGenerator:
                                                                file other than the source file. Defaults to False.
             logger (CustomLogger, optional): The logger object for logging messages.
             generate_log_files (bool): Whether or not to generate logs.
+            task_id (int): The id of the current task when using full repo mode, use for debugging. Defaults to 0.
 
         Returns:
             None
@@ -60,7 +64,7 @@ class UnitTestGenerator:
         self.code_coverage_report_path = code_coverage_report_path
         self.test_command = test_command
         self.test_command_dir = test_command_dir
-        self.included_files = included_files
+        self.included_files = UnitTestValidator.get_included_files(all_included_files)
         self.coverage_type = coverage_type
         self.additional_instructions = additional_instructions
         self.language = self.get_code_language(source_file_path)

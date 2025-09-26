@@ -41,7 +41,9 @@ class UnitTestValidator:
         use_report_coverage_feature_flag: bool,
         project_root: str = "",
         logger: Optional[CustomLogger] = None,
+        all_included_files: list = None,
         generate_log_files: bool = True,
+        task_id: int = 0,
     ):
         """
         Initialize the UnitTestValidator class with the provided parameters.
@@ -65,6 +67,7 @@ class UnitTestValidator:
                                                                file other than the source file. Defaults to False.
             logger (CustomLogger, optional): The logger object for logging messages.
             generate_log_files (bool): Whether or not to generate logs.
+            task_id (int): The id of the current task when using full repo mode, use for debugging. Defaults to 0.
 
         Returns:
             None
@@ -79,7 +82,7 @@ class UnitTestValidator:
         self.code_coverage_report_path = code_coverage_report_path
         self.test_command = test_command
         self.test_command_dir = test_command_dir
-        self.included_files = self.get_included_files(included_files)
+        self.included_files = self.get_included_files(all_included_files)
         self.coverage_type = coverage_type
         self.desired_coverage = desired_coverage
         self.additional_instructions = additional_instructions
@@ -93,6 +96,7 @@ class UnitTestValidator:
         self.agent_completion = agent_completion
         self.max_run_time_sec = max_run_time_sec
         self.generate_log_files = generate_log_files
+        self.task_id = task_id
 
         # Get the logger instance from CustomLogger
         self.logger = logger or CustomLogger.get_logger(__name__, generate_log_files=self.generate_log_files)
@@ -128,7 +132,7 @@ class UnitTestValidator:
             generate_log_files=self.generate_log_files,
         )
 
-    def get_coverage(self):
+    async def get_coverage(self):
         """
         Run code coverage and build the prompt to be used for generating tests.
 
@@ -136,7 +140,7 @@ class UnitTestValidator:
             None
         """
         # Run coverage and build the prompt
-        self.run_coverage()
+        await self.run_coverage()
         return (
             self.failed_test_runs,
             self.language,
@@ -225,6 +229,10 @@ class UnitTestValidator:
                 )
 
             relevant_line_number_to_insert_tests_after = find_unit_test_insert_line(self.language, self.project_root, self.test_file_path)
+            print("%%%%%%%%%%%%%%%%%%%%")
+            print("relavent line: ", relevant_line_number_to_insert_tests_after)
+
+            
             relevant_line_number_to_insert_imports_after = find_import_insert_line(self.language, self.project_root, self.test_file_path)
             counter_attempts = 0
             while not relevant_line_number_to_insert_tests_after and counter_attempts < allowed_attempts:
@@ -271,7 +279,7 @@ class UnitTestValidator:
             self.logger.error(f"Error during initial test suite analysis: {e}")
             raise Exception("Error during initial test suite analysis")
 
-    def run_coverage(self):
+    async def run_coverage(self):
         """
         Perform an initial build/test command to generate coverage report and get a baseline.
 
@@ -283,7 +291,7 @@ class UnitTestValidator:
         """
         # Perform an initial build/test command to generate coverage report and get a baseline
         self.logger.info(f'Running build/test command to generate coverage report: "{self.test_command}"')
-        stdout, stderr, exit_code, time_of_test_command = Runner.run_command(
+        stdout, stderr, exit_code, time_of_test_command = await Runner.run_command(
             command=self.test_command,
             max_run_time_sec=self.max_run_time_sec,
             cwd=self.test_command_dir,
@@ -327,11 +335,14 @@ class UnitTestValidator:
         if included_files:
             included_files_content = []
             file_names = []
+            print("included files are:")
             print(included_files)
-            for file_path in included_files:
+            for file_path, file_name, start_line, end_line in included_files:
                 try:
                     with open(file_path, "r") as file:
-                        included_files_content.append(file.read())
+                        file_content = file.read()
+                        targeted_file_content = '\n'.join(file_content.split('\n')[start_line:end_line+1])
+                        included_files_content.append(targeted_file_content)
                         file_names.append(file_path)
                 except IOError as e:
                     print(f"Error reading file {file_path}: {str(e)}")
@@ -343,7 +354,7 @@ class UnitTestValidator:
             return out_str.strip()
         return ""
 
-    def validate_test(self, generated_test: dict):
+    async def validate_test(self, generated_test: dict):
         """
         Validate a generated test by inserting it into the test file, running the test, and checking for pass/fail.
 
@@ -442,7 +453,7 @@ class UnitTestValidator:
                 # Step 2: Run the test using the Runner class
                 for i in range(self.num_attempts):
                     self.logger.info(f'Running test with the following command: "{self.test_command}"')
-                    stdout, stderr, exit_code, time_of_test_command = Runner.run_command(
+                    stdout, stderr, exit_code, time_of_test_command = await Runner.run_command(
                         command=self.test_command,
                         cwd=self.test_command_dir,
                         max_run_time_sec=self.max_run_time_sec,

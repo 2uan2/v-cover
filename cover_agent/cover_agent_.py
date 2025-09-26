@@ -33,6 +33,7 @@ class CoverAgent:
     def __init__(
         self,
         config: CoverAgentConfig,
+        task_id: int = 0,
         agent_completion: AgentCompletionABC = None,
         built_tool_adapter: Optional[BuiltToolAdapterABC] = None,
         logger: Optional[CustomLogger] = None,
@@ -113,12 +114,14 @@ class CoverAgent:
             test_command=self.config.test_command,
             test_command_dir=self.config.test_command_dir,
             included_files=self.config.included_files,
+            all_included_files=self.config.all_included_files,
             coverage_type=self.config.coverage_type,
             additional_instructions=self.config.additional_instructions,
             llm_model=self.config.model,
             use_report_coverage_feature_flag=self.config.use_report_coverage_feature_flag,
             agent_completion=self.agent_completion,
             generate_log_files=self.generate_log_files,
+            task_id=task_id,
         )
 
         # Initialize test validator with configuration
@@ -130,6 +133,7 @@ class CoverAgent:
             test_command=self.config.test_command,
             test_command_dir=self.config.test_command_dir,
             included_files=self.config.included_files,
+            all_included_files=self.config.all_included_files,
             coverage_type=self.config.coverage_type,
             desired_coverage=self.config.desired_coverage,
             additional_instructions=self.config.additional_instructions,
@@ -141,6 +145,7 @@ class CoverAgent:
             agent_completion=self.agent_completion,
             max_run_time_sec=self.config.max_run_time_sec,
             generate_log_files=self.generate_log_files,
+            task_id=task_id,
         )
 
     def _initialize_ai_caller(self):
@@ -227,7 +232,7 @@ class CoverAgent:
             # Otherwise, set the test file output path to the current test file
             self.config.test_file_output_path = self.config.test_file_path
 
-    def init(self):
+    async def init(self):
         """
         Initialize the test generation environment and perform initial analysis.
 
@@ -248,11 +253,11 @@ class CoverAgent:
 
         # Run initial test suite analysis
         self.test_validator.initial_test_suite_analysis()
-        failed_test_runs, language, test_framework, coverage_report = self.test_validator.get_coverage()
+        failed_test_runs, language, test_framework, coverage_report = await self.test_validator.get_coverage()
 
         return failed_test_runs, language, test_framework, coverage_report
 
-    def generate_and_validate_tests(self, failed_test_runs, language, test_framework, coverage_report):
+    async def generate_and_validate_tests(self, failed_test_runs, language, test_framework, coverage_report):
         """
         Generate new tests and validate their effectiveness.
 
@@ -267,7 +272,7 @@ class CoverAgent:
 
         try:
             test_results = [
-                self.test_validator.validate_test(test) for test in generated_tests_dict.get("new_tests", [])
+                await self.test_validator.validate_test(test) for test in generated_tests_dict.get("new_tests", [])
             ]
 
             # Insert results into database
@@ -288,7 +293,7 @@ class CoverAgent:
         """
         return hasattr(self, "test_db") and self.test_db is not None
 
-    def check_iteration_progress(self):
+    async def check_iteration_progress(self):
         """
         Evaluate current progress towards coverage goals.
 
@@ -296,7 +301,7 @@ class CoverAgent:
             tuple: Contains updated test results, language info, framework details,
                   coverage report, and boolean indicating if target is reached.
         """
-        failed_runs, lang, framework, report = self.test_validator.get_coverage()
+        failed_runs, lang, framework, report = await self.test_validator.get_coverage()
         target_reached = self.test_validator.current_coverage >= (self.test_validator.desired_coverage / 100)
         return failed_runs, lang, framework, report, target_reached
 
@@ -359,7 +364,7 @@ class CoverAgent:
             self.logger.info(f"Current Coverage: {round(self.test_validator.current_coverage * 100, 2)}%")
         self.logger.info(f"Desired Coverage: {self.test_validator.desired_coverage}%")
 
-    def run(self):
+    async def run(self):
         """
         Execute the main test generation loop until coverage goals are met or iterations exhausted.
 
@@ -370,14 +375,14 @@ class CoverAgent:
         4. Finalizing and reporting results
         """
         iteration_count = 0
-        failed_test_runs, language, test_framework, coverage_report = self.init()
+        failed_test_runs, language, test_framework, coverage_report = await self.init()
 
         while iteration_count < self.config.max_iterations:
             self.logger.info(f"Iteration {iteration_count + 1} of {self.config.max_iterations}.")
-            self.generate_and_validate_tests(failed_test_runs, language, test_framework, coverage_report)
+            await self.generate_and_validate_tests(failed_test_runs, language, test_framework, coverage_report)
 
             failed_test_runs, language, test_framework, coverage_report, target_reached = (
-                self.check_iteration_progress()
+                await self.check_iteration_progress()
             )
             if target_reached:
                 break
