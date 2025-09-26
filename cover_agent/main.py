@@ -1,5 +1,6 @@
 import argparse
 import os
+import asyncio
 
 from dynaconf import Dynaconf
 
@@ -182,7 +183,7 @@ def main():
     args = parse_args(settings)
     config = CoverAgentConfig.from_cli_args_with_defaults(args)
     agent = CoverAgent(config)
-    agent.run()
+    asyncio.run(agent.run())
 
 
 if __name__ == "__main__":

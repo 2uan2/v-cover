@@ -5,6 +5,8 @@ import logging
 import datetime
 import os
 import argparse
+from typing import Union
+from pathlib import Path
 
 from cover_agent.ai_caller import AICaller
 from cover_agent.cover_agent_ import CoverAgent
@@ -22,16 +24,26 @@ async def process_test_file(test_file: Union[str, Path], adapter: MavenAdapter, 
     try:
         print(f"\n[Task {task_id}] Processing test file: {test_file} at {datetime.datetime.now()}")
         # Find the context files for the test file
-        all_context = await context_helper.find_all_context(test_file)
-        context_files: list[Path] = [ context_file for context_file, _, _ in all_context ]
-        print("[Task {}] Context files for test file '{}':\n{}".format(task_id, test_file, "".join(f"{f}\n" for f in context_files)))
+        all_context: list[tuple] = await context_helper.find_all_context(test_file)
+        # print(f"\n[Task {task_id}] all context are: ", all_context)
+        context_files: list[Path] = [ context_file for context_file, _, _, _ in all_context ]
+        print("[Task {}] Context files for test file '{}':\n{}".format(task_id, test_file, "".join(f"{f}\n" for f in all_context)))
 
         # Analyze the test file against the context files
         print(f"\n[Task {task_id}] Analyzing test file against context files...")
-        source_file, context_files_include = context_files[0], context_files[1:]
-        # source_file, context_files_include = await context_helper.analyze_context(
-        #     test_file, context_files, ai_caller
-        # )
+        source_file, context_files_include = await context_helper.analyze_context(
+            test_file, context_files, ai_caller
+        )
+        print("[=================================================]")
+        print("source file is:")
+        print(source_file)
+        all_context_no_test = []
+        for context_file in all_context:
+            if Path(context_file[0]).resolve() != Path(test_file).resolve():
+                all_context_no_test.append(context_file)
+        print("context file are:")
+        print(all_context_no_test)
+
 
         if source_file:
             try:
@@ -41,20 +53,23 @@ async def process_test_file(test_file: Union[str, Path], adapter: MavenAdapter, 
                 args_copy.test_command_dir = args.project_root
                 args_copy.test_file_path = test_file
                 args_copy.included_files = context_files_include
+                args_copy.all_included_files = all_context_no_test 
                 # args_copy.test_command = adapter.adapt_test_command(test_file)
                 args_copy.code_coverage_report_path = adapter.get_coverage_path(test_file)
 
                 config = CoverAgentConfig.from_cli_args_with_defaults(args_copy)
                 agent = CoverAgent(config=config, built_tool_adapter=adapter)
-                agent.run()
+                await agent.run()
                 return (test_file, True, None)
             except Exception as e:
                 print(f"[Task {task_id}] Error running CoverAgent for test file '{test_file}': {e}")
+                raise
                 return (test_file, False, f"CoverAgent error: {str(e)}")
         else:
             return (test_file, False, "No source file found")
     except Exception as e:
         print(f"[Task {task_id}] Error processing test file '{test_file}': {e}")
+        raise
         return (test_file, False, f"Processing error: {str(e)}")
 
 
