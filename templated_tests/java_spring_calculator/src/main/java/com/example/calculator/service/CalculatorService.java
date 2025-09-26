@@ -2,14 +2,9 @@ package com.example.calculator.service;
 
 import org.springframework.stereotype.Service;
 
-import com.example.calculator.controller.CalculatorController;
-
 @Service
 public class CalculatorService {
-    private CalculatorController calculatorController;
-
     public double add(double a, double b) {
-        calculatorController.add(1, 2);
         return a + b;
     }
 

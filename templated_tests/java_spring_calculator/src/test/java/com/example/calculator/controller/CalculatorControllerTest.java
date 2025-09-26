@@ -12,6 +12,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 
 @WebMvcTest(CalculatorController.class)
@@ -31,12 +33,12 @@ public class CalculatorControllerTest {
         when(calculatorService.divide(6, 3)).thenReturn(2.0);
     }
 
-    // @Test
-    // public void testAdd() throws Exception {
-    // mockMvc.perform(get("/add?a=2&b=3"))
-    // .andExpect(status().isOk())
-    // .andExpect(content().string("5.0"));
-    // }
+    @Test
+    public void testAdd() throws Exception {
+        mockMvc.perform(get("/add?a=2&b=3"))
+                .andExpect(status().isOk())
+                .andExpect(content().string("5.0"));
+    }
 
     @Test
     public void testSubtract() throws Exception {
@@ -44,5 +46,32 @@ public class CalculatorControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string("1.0"));
     }
+
+    @Test
+    public void testServiceDivideByZero() {
+        CalculatorService service = new CalculatorService();
+        Exception exception = assertThrows(IllegalArgumentException.class, () -> {
+            service.divide(10, 0);
+        });
+        assertEquals("Cannot divide by zero", exception.getMessage());
+    }
+
+
+    @Test
+    public void testServiceDivideHappyPath() {
+        CalculatorService service = new CalculatorService();
+        assertEquals(2.0, service.divide(10, 5));
+        assertEquals(0.0, service.divide(0, 5));
+    }
+
+
+    @Test
+    public void testServiceBasicOperations() {
+        CalculatorService service = new CalculatorService();
+        assertEquals(8.0, service.add(5, 3));
+        assertEquals(2.0, service.subtract(5, 3));
+        assertEquals(15.0, service.multiply(5, 3));
+    }
+
 
 }

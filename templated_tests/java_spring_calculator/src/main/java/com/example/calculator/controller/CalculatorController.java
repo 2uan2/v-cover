@@ -1,7 +1,6 @@
 package com.example.calculator.controller;
 
 import com.example.calculator.service.CalculatorService;
-import com.example.calculator.service.CalculatorHelper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -12,13 +11,6 @@ public class CalculatorController {
 
     @Autowired
     private CalculatorService calculatorService;
-
-    private final CalculatorHelper calculatorHelper;
-
-    @Autowired
-    public CalculatorController(CalculatorHelper calculatorHelper) {
-        this.calculatorHelper = calculatorHelper;
-    }
 
     @GetMapping("/add")
     public double add(@RequestParam double a, @RequestParam double b) {
@@ -38,10 +30,5 @@ public class CalculatorController {
     @GetMapping("/divide")
     public double divide(@RequestParam double a, @RequestParam double b) {
         return calculatorService.divide(a, b);
-    }
-
-    @GetMapping("/power")
-    public double power(@RequestParam double a, @RequestParam double b) {
-        return calculatorHelper.power(a, b);
     }
 }

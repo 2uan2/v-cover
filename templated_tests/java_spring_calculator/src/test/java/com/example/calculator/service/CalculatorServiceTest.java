@@ -33,4 +33,10 @@ public class CalculatorServiceTest {
             calculatorService.divide(1, 0);
         });
     }
+
+    @Test
+    public void testMultiplyByZero() {
+        assertEquals(0.0, calculatorService.multiply(5, 0));
+    }
+
 }
