@@ -58,6 +58,7 @@ class DefaultAgentCompletion(AgentCompletionABC):
             # 2. Render system & user templates with the passed-in kwargs
             system_prompt = environment.from_string(settings.system).render(**kwargs)
             user_prompt = environment.from_string(settings.user).render(**kwargs)
+            print("===================@@@@@@@@@@===================\nuser prompt is", user_prompt)
 
         except ValueError:
             # Re-raise the ValueError above so callers can catch it if needed.

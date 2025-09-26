@@ -35,7 +35,7 @@ class FileMap:
             self.fname_rel = fname_full_path
         self.main_queries_path = Path(__file__).parent.parent / "queries"
         if not os.path.exists(fname_full_path):
-            print(f"File {fname_full_path} does not exist")
+            raise FileNotFoundError(f"File {fname_full_path} does not exist")
         with open(fname_full_path, "r") as f:
             code = f.read()
         self.code = code.rstrip("\n") + "\n"

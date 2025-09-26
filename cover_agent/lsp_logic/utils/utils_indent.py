@@ -32,7 +32,7 @@ def find_indentation_amount(language: str, project_root: str, test_file: str) ->
         print(
             f"Error while getting indentation, falling back to using LLM maybe??: {e}"
         )
-        return None
+        return 4 
 
 def find_number_of_tests(language: str, project_root: str, test_file: str) -> int | None:
     try:

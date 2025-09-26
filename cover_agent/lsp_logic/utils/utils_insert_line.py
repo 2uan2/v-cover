@@ -23,7 +23,7 @@ def find_unit_test_insert_line(language: str, project_root: str, test_file: str)
             if result['end_line'] + 1 > last_line and 'test' in result['name'].lower():
                 last_line = result['end_line']
 
-        return last_line
+        return last_line + 1
     except Exception as e:
         print(
             f"Error while getting indentation, falling back to using LLM maybe??: {e}"

@@ -170,16 +170,25 @@ async def _recursive_search(call_num: int, args: argparse.Namespace, file: Path,
         # print("     ===================")
         for context_file_and_line in context_files_and_lines:
             context_file, symbol, line = context_file_and_line
-            fm = FileMap(
-                context_file,
-                parent_context=False,
-                child_context=False,
-                header_max=0,
-                project_base_path=args.project_root,
-            )
+            # print("^^^^^^^^^^^^^^^^^^")
+            # print(context_file_and_line)
+            if Path(context_file).is_relative_to(Path(args.project_root)):
+                continue
+            try:
+                fm = FileMap(
+                    context_file,
+                    parent_context=False,
+                    child_context=False,
+                    header_max=0,
+                    project_base_path=args.project_root,
+                )
+            except FileNotFoundError as e:
+                continue
             context_ranges: list[tuple[int, int]] = fm.get_range(line)
             context_range = context_ranges[-1] # choose the context range as the last element for now which is the smallest range [(9, 46), (22, 25)]
             dependency: tuple = (context_file, symbol, context_range[0], context_range[1])
+            # print(f"found dependency {dependency}")
+            # print(dependency)
             # if dependency in visited: 
             #     print(f"dependency {dependency} already found inside visited set {visited}")
             if dependency not in visited:
