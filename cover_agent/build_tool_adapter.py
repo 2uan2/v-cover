@@ -108,7 +108,7 @@ class MavenAdapter(BuiltToolAdapterABC):
             new_output_dir_element = ET.Element('outputDirectory')
             new_output_dir_element.text = f'${{{self.output_directory_variable}}}'
             configurations.append(new_output_dir_element)
-            print("no outputDir")
+            # print("no outputDir")
             ET.register_namespace('', 'http://maven.apache.org/POM/4.0.0')
             tree.write(absolute_pom_path)
 

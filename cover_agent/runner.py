@@ -1,10 +1,11 @@
 import subprocess
 import time
+import asyncio
 
 
 class Runner:
     @staticmethod
-    def run_command(command: str, max_run_time_sec: int, cwd: str = None):
+    async def run_command(command: str, max_run_time_sec: int, cwd: str = None):
         """
         Executes a shell command in a specified working directory and returns its output, error, and exit code.
 
@@ -20,14 +21,31 @@ class Runner:
         command_start_time = int(time.time() * 1000)  # Get the current time in milliseconds
 
         try:
-            result = subprocess.run(
+            proc = await asyncio.create_subprocess_shell(
                 command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
                 shell=True,
                 cwd=cwd,
-                text=True,
-                capture_output=True,
-                timeout=max_run_time_sec,
+                # text=True,
+                # capture_output=True,
+                # timeout=max_run_time_sec,
             )
-            return result.stdout, result.stderr, result.returncode, command_start_time
+            stdout, stderr = await proc.communicate()
+            print(f'[{command!r} exited with {proc.returncode}]')
+            if stdout:
+                print(f'[stdout]\n{stdout.decode()}')
+            if stderr:
+                print(f'[stderr]\n{stderr.decode()}')
+
+            # result = subprocess.run(
+            #     command,
+            #     shell=True,
+            #     cwd=cwd,
+            #     text=True,
+            #     capture_output=True,
+            #     timeout=max_run_time_sec,
+            # )
+            return stdout, stderr, proc.returncode, command_start_time
         except subprocess.TimeoutExpired:
             return "", "Command timed out", -1, command_start_time
