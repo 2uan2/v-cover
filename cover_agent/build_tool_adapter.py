@@ -56,9 +56,9 @@ class MavenAdapter(BuiltToolAdapterABC):
             new_args.append(arg)
 
         new_args.append(f"-Dtest={class_name}")
-        new_args.append(f"-Djacoco.destFile={self.default_output_path}/jacoco-{class_name}.exec")
-        new_args.append(f"-Djacoco.dataFile={self.default_output_path}/jacoco-{class_name}.exec")
-        new_args.append(f"-D{self.output_directory_variable}={self.default_output_path}/{class_name}")
+        new_args.append(f"-Djacoco.destFile={self.default_output_path / Path(f'jacoco-{class_name}.exec')}")
+        new_args.append(f"-Djacoco.dataFile={self.default_output_path / Path(f'jacoco-{class_name}.exec')}")
+        new_args.append(f"-D{self.output_directory_variable}={self.default_output_path / Path(class_name)}")
         # TODO: maybe split this part out? so adapt_test_command only adapt maven command to run single test?
         return " ".join(new_args)
 

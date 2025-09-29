@@ -16,6 +16,7 @@ import threading
 from contextlib import asynccontextmanager, contextmanager
 from .lsp_protocol_handler.lsp_constants import LSPConstants
 from .lsp_protocol_handler import lsp_types as LSPTypes
+from tree_sitter import Node
 
 from . import multilspy_types
 from .multilspy_logger import MultilspyLogger
@@ -686,7 +687,8 @@ class LanguageServer:
             ret.append(multilspy_types.UnifiedSymbolInformation(**item))
 
         return ret
-    async def get_direct_context(self, captures, language, project_dir, rel_file):
+
+    async def get_direct_context(self, captures: list[tuple[Node, str]], language: str, project_dir: str, rel_file: str):
         target_file = str(os.path.join(project_dir, rel_file))
         absolute_file = str(os.path.abspath(rel_file))
         skip_found_symbols = True
@@ -726,6 +728,51 @@ class LanguageServer:
                         context_symbols.add(name_symbol)
                         context_symbols_and_files.add((name_symbol, rel_d_path))
         return context_files, context_symbols
+
+    async def get_direct_context_file_and_line(self, query_results: list[dict], captures: list[tuple[Node, str]], language: str, project_dir: str, rel_file: str) -> set[tuple[str, str, int]]:
+        target_file = str(os.path.join(project_dir, rel_file))
+        absolute_file = str(os.path.abspath(rel_file))
+        skip_found_symbols = True
+        context_files = set()
+        context_symbols = set()
+        context_symbols_and_files = set()
+        for result in query_results:
+            name_symbol = result['name']
+            if name_symbol in context_symbols and skip_found_symbols:
+                continue
+            try:
+                symbol_definition = await self.request_definition(
+                    absolute_file, line=result['start'], column=result['column']
+                )
+                # print(f"symbol_definition: {symbol_definition}")
+                # sleep(0.01)
+            except Exception as e:
+                print(f"Error requesting definition for {name_symbol}: {e}")
+                symbol_definition = []
+            for d in symbol_definition:
+                # print("-------")
+                # print("d: ", d)
+                # line = result['start']
+                d_path = uri_to_path(d["uri"])
+                # print("d_path: ", d_path)
+                d_start = d["range"]["start"]["line"]
+                # d_start = result['start']
+                rel_d_path = os.path.relpath(d_path, project_dir)
+                if (
+                    name_symbol,
+                    rel_d_path,
+                ) in context_symbols_and_files and skip_found_symbols:
+                    continue
+                if d_path != target_file:
+                    if project_dir not in d_path:
+                        continue
+                    if not is_forbidden_directory(d_path, language):
+                        context_files.add((d_path, name_symbol, d_start)) # return file and line
+                        context_symbols.add(name_symbol)
+                        context_symbols_and_files.add((name_symbol, rel_d_path))
+
+        return context_files
+    
 
     async def get_reverse_context(self, captures, project_dir, rel_file):
         target_file = str(os.path.join(project_dir, rel_file))
@@ -957,7 +1004,17 @@ class SyncLanguageServer:
             self.language_server.request_workspace_symbol(query), self.loop
         ).result(timeout=self.timeout)
         return result
-    def get_direct_context(self, captures, language, project_dir, rel_file):
+
+    def get_direct_context_file_and_line(self, query_results: list[dict], captures: list[tuple[Node, str]], language: str, project_dir: str, rel_file: str) -> set[tuple[str, str, int]]:
+        result = asyncio.run_coroutine_threadsafe(
+            self.language_server.get_direct_context_file_and_line(
+                captures, language, project_dir, rel_file
+            ),
+            self.loop,
+        ).result()
+        return result
+
+    def get_direct_context(self, captures: list[tuple[Node, str]], language: str, project_dir: str, rel_file: str):
         result = asyncio.run_coroutine_threadsafe(
             self.language_server.get_direct_context(
                 captures, language, project_dir, rel_file

@@ -101,12 +101,15 @@ async def analyze_context(test_file, context_files, args, ai_caller):
         user_prompt = environment.from_string(
             get_settings().analyze_test_against_context.user
         ).render(variables)
-        response, prompt_token_count, response_token_count = ai_caller.call_model(
+        print("0000000000000000000000000000000000000000000000000000000000000000000000")
+        print(user_prompt)
+        print("0000000000000000000000000000000000000000000000000000000000000000000000")
+        response, prompt_token_count, response_token_count = await ai_caller.call_model(
             prompt={"system": system_prompt, "user": user_prompt}, stream=False
         )
         response_dict = load_yaml(response)
-        # if int(response_dict.get("is_this_a_unit_test", 0)) == 1:
-        if int(response_dict.get("is_unit_test", 0)) == 1:
+        if int(response_dict.get("is_this_a_unit_test", 0)) == 1:
+        # if int(response_dict.get("is_unit_test", 0)) == 1:
             source_file_rel = response_dict.get("main_file", "").strip().strip("`")
             source_file = os.path.join(args.project_root, source_file_rel)
             for file in context_files:

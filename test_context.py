@@ -15,8 +15,8 @@ async def run():
         # context_files = await context_helper.find_test_file_context(file)
         # print("The return value from context_helper.find_test_file_context: ", context_files)
         all_context_files = await context_helper.find_all_context(file)
-        context_files = [context_file for context_file, _, _, _ in all_context_files]
-        print("all_context_files are: ", set(context_files))
+        # context_files = [context_file for context_file, _, _, _ in all_context_files]
+        print("all_context_files are: ", all_context_files)
 
 
 
