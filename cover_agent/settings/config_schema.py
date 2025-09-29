@@ -158,7 +158,7 @@ class CoverAgentConfig:
             "test_command": default_config.get("test_command"),
             "test_command_dir": default_config.get("test_command_dir"),
             "included_files": default_config.get("included_files"),
-            "all_included_files": default_config.get("included_files")
+            "all_included_files": default_config.get("included_files"),
             "coverage_type": default_config.get("coverage_type"),
             "report_filepath": default_config.get("report_filepath"),
             "desired_coverage": default_config.get("desired_coverage"),

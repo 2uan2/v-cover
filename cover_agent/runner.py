@@ -21,6 +21,7 @@ class Runner:
         command_start_time = int(time.time() * 1000)  # Get the current time in milliseconds
 
         try:
+            print("test command is: ", command)
             proc = await asyncio.create_subprocess_shell(
                 command,
                 stdout=asyncio.subprocess.PIPE,

@@ -159,7 +159,7 @@ class UnitTestGenerator:
 
         return failed_test_runs_value
 
-    def generate_tests(self, failed_test_runs, language, testing_framework, code_coverage_report):
+    async def generate_tests(self, failed_test_runs, language, testing_framework, code_coverage_report):
         """
         Generate tests using the AI model based on the constructed prompt.
 
@@ -180,7 +180,7 @@ class UnitTestGenerator:
         failed_test_runs_value = self.check_for_failed_test_runs(failed_test_runs)
 
         max_tests_per_run = get_settings().get("default").get("max_tests_per_run", 4)
-        response, prompt_token_count, response_token_count, self.prompt = self.agent_completion.generate_tests(
+        response, prompt_token_count, response_token_count, self.prompt = await self.agent_completion.generate_tests(
             source_file_name=os.path.relpath(self.source_file_path, self.project_root),
             max_tests=max_tests_per_run,
             source_file_numbered="\n".join(f"{i + 1} {line}" for i, line in enumerate(self.source_code.split("\n"))),

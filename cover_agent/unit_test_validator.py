@@ -125,6 +125,7 @@ class UnitTestValidator:
         # initialize the coverage processor
         self.coverage_processor = CoverageProcessor(
             file_path=self.code_coverage_report_path,
+            test_command_dir=self.test_command_dir,
             src_file_path=self.source_file_path,
             coverage_type=self.coverage_type,
             use_report_coverage_feature_flag=self.use_report_coverage_feature_flag,
@@ -183,7 +184,7 @@ class UnitTestValidator:
         # Return the language name in lowercase
         return language_name.lower()
 
-    def initial_test_suite_analysis(self):
+    async def initial_test_suite_analysis(self):
         """
         Perform the initial analysis of the test suite structure.
 
@@ -209,7 +210,7 @@ class UnitTestValidator:
                 # Read in the test file content and pass into agent completion
                 test_file_content = self._read_file(self.test_file_path)
                 response, prompt_token_count, response_token_count, prompt = (
-                    self.agent_completion.analyze_suite_test_headers_indentation(
+                    await self.agent_completion.analyze_suite_test_headers_indentation(
                         language=self.language,
                         test_file_name=os.path.relpath(self.test_file_path, self.project_root),
                         test_file=test_file_content,
@@ -237,7 +238,7 @@ class UnitTestValidator:
             counter_attempts = 0
             while not relevant_line_number_to_insert_tests_after and counter_attempts < allowed_attempts:
                 response, prompt_token_count, response_token_count, prompt = (
-                    self.agent_completion.analyze_test_insert_line(
+                    await self.agent_completion.analyze_test_insert_line(
                         language=self.language,
                         test_file_numbered="\n".join(
                             f"{i + 1} {line}" for i, line in enumerate(self._read_file(self.test_file_path).split("\n"))
@@ -637,7 +638,7 @@ class UnitTestValidator:
     def to_json(self):
         return json.dumps(self.to_dict())
 
-    def extract_error_message(self, fail_details):
+    async def extract_error_message(self, fail_details):
         """
         Extracts the error message from the provided fail details.
 
@@ -654,7 +655,7 @@ class UnitTestValidator:
         """
         try:
             # Run the analysis via LLM
-            response, prompt_token_count, response_token_count, prompt = self.agent_completion.analyze_test_failure(
+            response, prompt_token_count, response_token_count, prompt = await self.agent_completion.analyze_test_failure(
                 source_file_name=os.path.relpath(self.source_file_path, self.project_root),
                 source_file=self._read_file(self.source_file_path),
                 processed_test_file=fail_details["processed_test_file"],

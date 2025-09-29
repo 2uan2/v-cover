@@ -75,7 +75,7 @@ class AICaller:
         self.logger = logger or CustomLogger.get_logger(__name__, generate_log_files=generate_log_files)
 
     @conditional_retry  # You can access self.enable_retry here
-    def call_model(self, prompt: dict, stream=True):
+    async def call_model(self, prompt: dict, stream=True):
         """
         Call the language model with the provided prompt and retrieve the response.
 
