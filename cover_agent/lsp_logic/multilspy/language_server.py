@@ -17,7 +17,6 @@ from contextlib import asynccontextmanager, contextmanager
 from .lsp_protocol_handler.lsp_constants import LSPConstants
 from .lsp_protocol_handler import lsp_types as LSPTypes
 
-from tree_sitter import Node
 from . import multilspy_types
 from .multilspy_logger import MultilspyLogger
 from .lsp_protocol_handler.server import (
@@ -687,130 +686,9 @@ class LanguageServer:
             ret.append(multilspy_types.UnifiedSymbolInformation(**item))
 
         return ret
-
-    # async def get_all_context(self, captures: list[tuple[Node, str]], language: str, project_dir: str, rel_file: str):
-    #     target_file = str(os.path.join(project_dir, rel_file))
-    #     absolute_file = str(os.path.abspath(rel_file))
-    #     skip_found_symbols = True
-    #     context_files = set()
-    #     context_symbols = set()
-    #     context_symbols_and_files = set()
-    #     for ref in captures:
-    #         name_symbol = str(ref[0].text.decode())
-    #         if name_symbol in context_symbols and skip_found_symbols:
-    #             continue
-    #
-    #         # getting direct context - which files are referenced by the target file
-    #         try:
-    #             symbol_definition = await self.request_definition(
-    #                 absolute_file, line=ref[0].start_point[0], column=ref[0].start_point[1]
-    #             )
-    #             # print(f"symbol_definition: {symbol_definition}")
-    #             # sleep(0.01)
-    #         except Exception as e:
-    #             print(f"Error requesting definition for {name_symbol}: {e}")
-    #             symbol_definition = []
-    #         for d in symbol_definition:
-    #             line = ref[0].start_point[0]
-    #             d_path = uri_to_path(d["uri"])
-    #             rel_d_path = os.path.relpath(d_path, project_dir)
-    #             if (
-    #                 name_symbol,
-    #                 rel_d_path,
-    #             ) in context_symbols_and_files and skip_found_symbols:
-    #                 continue
-    #             if d_path != target_file:
-    #                 if project_dir not in d_path:
-    #                     continue
-    #                 if not is_forbidden_directory(d_path, language):
-    #                     # print(f"Context definition: \'{name_symbol}\' at line {line} from file \'{rel_d_path}\'")
-    #                     context_files.add(d_path)
-    #                     context_symbols.add(name_symbol)
-    #                     context_symbols_and_files.add((name_symbol, rel_d_path))
-    #     return context_files, context_symbols
-    async def get_direct_context_file_and_line(self, query_results: list[dict], captures: list[tuple[Node, str]], language: str, project_dir: str, rel_file: str) -> set[tuple[str, str, int]]:
+    async def get_direct_context(self, captures, language, project_dir, rel_file):
         target_file = str(os.path.join(project_dir, rel_file))
         absolute_file = str(os.path.abspath(rel_file))
-        skip_found_symbols = True
-        context_files = set()
-        context_symbols = set()
-        context_symbols_and_files = set()
-        for result in query_results:
-            name_symbol = result['name']
-            if name_symbol in context_symbols and skip_found_symbols:
-                continue
-            try:
-                symbol_definition = await self.request_definition(
-                    absolute_file, line=result['start'], column=result['column']
-                )
-                # print(f"symbol_definition: {symbol_definition}")
-                # sleep(0.01)
-            except Exception as e:
-                print(f"Error requesting definition for {name_symbol}: {e}")
-                symbol_definition = []
-            for d in symbol_definition:
-                # print("-------")
-                # print("d: ", d)
-                # line = result['start']
-                d_path = uri_to_path(d["uri"])
-                # print("d_path: ", d_path)
-                d_start = d["range"]["start"]["line"]
-                # d_start = result['start']
-                rel_d_path = os.path.relpath(d_path, project_dir)
-                if (
-                    name_symbol,
-                    rel_d_path,
-                ) in context_symbols_and_files and skip_found_symbols:
-                    continue
-                if d_path != target_file:
-                    if project_dir not in d_path:
-                        continue
-                    if not is_forbidden_directory(d_path, language):
-                        context_files.add((d_path, name_symbol, d_start)) # return file and line
-                        context_symbols.add(name_symbol)
-                        context_symbols_and_files.add((name_symbol, rel_d_path))
-
-        # for ref in captures:
-        #     name_symbol = str(ref[0].text.decode())
-        #     # print("name: ", name_symbol)
-        #     if name_symbol in context_symbols and skip_found_symbols:
-        #         continue
-        #     # getting direct context - which files are referenced by the target file
-        #     
-        #     try:
-        #         symbol_definition = await self.request_definition(
-        #             absolute_file, line=ref[0].start_point[0], column=ref[0].start_point[1]
-        #         )
-        #         # print(f"symbol_definition: {symbol_definition}")
-        #         # sleep(0.01)
-        #     except Exception as e:
-        #         print(f"Error requesting definition for {name_symbol}: {e}")
-        #         symbol_definition = []
-        #     for d in symbol_definition:
-        #         line = ref[0].start_point[0]
-        #         d_path = uri_to_path(d["uri"])
-        #         d_start = d["range"]["start"]["line"]
-        #         rel_d_path = os.path.relpath(d_path, project_dir)
-        #         if (
-        #             name_symbol,
-        #             rel_d_path,
-        #         ) in context_symbols_and_files and skip_found_symbols:
-        #             continue
-        #         if d_path != target_file:
-        #             if project_dir not in d_path:
-        #                 continue
-        #             if not is_forbidden_directory(d_path, language):
-        #                 context_files.add((d_path, name_symbol, d_start)) # return file and line
-        #                 context_symbols.add(name_symbol)
-        #                 context_symbols_and_files.add((name_symbol, rel_d_path))
-        return context_files
-    
-    async def get_direct_context(self, captures: list[tuple[Node, str]], language: str, project_dir: str, rel_file: str):
-        target_file = str(os.path.join(project_dir, rel_file))
-        absolute_file = str(os.path.abspath(rel_file))
-        # print('rel_file: ', rel_file)
-        # print('absolute_file: ', absolute_file)
-        # print('target_file: ', target_file)
         skip_found_symbols = True
         context_files = set()
         context_symbols = set()
@@ -820,12 +698,12 @@ class LanguageServer:
             if name_symbol in context_symbols and skip_found_symbols:
                 continue
             # getting direct context - which files are referenced by the target file
-            
+            print("get direct context for symbol: ", name_symbol)
             try:
                 symbol_definition = await self.request_definition(
                     absolute_file, line=ref[0].start_point[0], column=ref[0].start_point[1]
                 )
-                # print(f"symbol_definition: {symbol_definition}")
+                print(f"symbol_definition: {symbol_definition}")
                 # sleep(0.01)
             except Exception as e:
                 print(f"Error requesting definition for {name_symbol}: {e}")
@@ -833,14 +711,6 @@ class LanguageServer:
             for d in symbol_definition:
                 line = ref[0].start_point[0]
                 d_path = uri_to_path(d["uri"])
-                d_start = d["range"]["start"]
-                d_end = d["range"]["end"]
-                # print("------------------")
-                # print("text: ", ref[0].text)
-                # print("uri: ", d_path)
-                # print("start: ", d_start)
-                # print("line: ", line)
-                # print("end: ", d_end)
                 rel_d_path = os.path.relpath(d_path, project_dir)
                 if (
                     name_symbol,
@@ -851,12 +721,10 @@ class LanguageServer:
                     if project_dir not in d_path:
                         continue
                     if not is_forbidden_directory(d_path, language):
-                        # print(f"Context definition: \'{name_symbol}\' at line {d_start} from file \'{rel_d_path}\'")
+                        # print(f"Context definition: \'{name_symbol}\' at line {line} from file \'{rel_d_path}\'")
                         context_files.add(d_path)
                         context_symbols.add(name_symbol)
                         context_symbols_and_files.add((name_symbol, rel_d_path))
-        print(context_files)
-        print(context_symbols) # {'(10.0, 5.0)', 'add', '()', 'getOperand1', 'CalculationResult', 'getOperand2', 'getResult'} is an example results of this file, need to remove the () parts
         return context_files, context_symbols
 
     async def get_reverse_context(self, captures, project_dir, rel_file):
@@ -1089,16 +957,6 @@ class SyncLanguageServer:
             self.language_server.request_workspace_symbol(query), self.loop
         ).result(timeout=self.timeout)
         return result
-
-    def get_direct_context_file_and_line(self, captures, language, project_dir, rel_file):
-        result = asyncio.run_coroutine_threadsafe(
-            self.language_server.get_direct_context_file_and_line(
-                captures, language, project_dir, rel_file
-            ),
-            self.loop,
-        ).result()
-        return result
-
     def get_direct_context(self, captures, language, project_dir, rel_file):
         result = asyncio.run_coroutine_threadsafe(
             self.language_server.get_direct_context(
