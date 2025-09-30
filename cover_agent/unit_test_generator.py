@@ -29,7 +29,7 @@ class UnitTestGenerator:
         project_root: str = "",
         logger: Optional[CustomLogger] = None,
         generate_log_files: bool = True,
-        task_id: int = 0,
+        task_id: int = None,
     ):
         """
         Initialize the UnitTestGenerator class with the provided parameters.
@@ -75,7 +75,7 @@ class UnitTestGenerator:
         self.generate_log_files = generate_log_files
 
         # Get the logger instance from CustomLogger
-        self.logger = logger or CustomLogger.get_logger(__name__, generate_log_files=self.generate_log_files)
+        self.logger = logger or CustomLogger.get_logger(__name__, task_id, os.path.basename(test_file_path), generate_log_files=self.generate_log_files)
 
         # States to maintain within this class
         self.preprocessor = FilePreprocessor(self.test_file_path)

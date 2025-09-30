@@ -43,7 +43,7 @@ class UnitTestValidator:
         logger: Optional[CustomLogger] = None,
         all_included_files: list = None,
         generate_log_files: bool = True,
-        task_id: int = 0,
+        task_id: int = None,
     ):
         """
         Initialize the UnitTestValidator class with the provided parameters.
@@ -99,7 +99,7 @@ class UnitTestValidator:
         self.task_id = task_id
 
         # Get the logger instance from CustomLogger
-        self.logger = logger or CustomLogger.get_logger(__name__, generate_log_files=self.generate_log_files)
+        self.logger = logger or CustomLogger.get_logger(__name__, task_id, os.path.basename(test_file_path), generate_log_files=self.generate_log_files)
 
         # Override covertype to be 'diff' if diff_coverage is enabled
         if self.diff_coverage:
@@ -481,7 +481,7 @@ class UnitTestValidator:
                         "processed_test_file": processed_test,
                     }
 
-                    error_message = self.extract_error_message(fail_details)
+                    error_message = await self.extract_error_message(fail_details)
                     if error_message:
                         logging.error(f"Error message summary:\n{error_message}")
 
