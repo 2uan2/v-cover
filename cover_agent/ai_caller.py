@@ -51,6 +51,7 @@ class AICaller:
         logger: Optional[CustomLogger] = None,
         generate_log_files: bool = True,
         claude_code: bool = False,
+        task_id: int = None,
     ):
         """
         Initializes an instance of the AICaller class.
@@ -59,6 +60,7 @@ class AICaller:
             model (str): The name of the model to be used.
             api_base (str): The base API URL to use in case the model is set to Ollama or Hugging Face.
         """
+        # litellm._turn_on_debug()
         # Apply nest_asyncio to allow nested event loops
         nest_asyncio.apply()
         self.claude_code = claude_code
@@ -72,10 +74,10 @@ class AICaller:
         self.record_replay_manager = record_replay_manager or RecordReplayManager(
             record_mode=record_mode, generate_log_files=generate_log_files
         )
-        self.logger = logger or CustomLogger.get_logger(__name__, generate_log_files=generate_log_files)
+        self.logger = logger or CustomLogger.get_logger(__name__, task_id, os.path.basename(test_file) if test_file else None, generate_log_files=generate_log_files)
 
     @conditional_retry  # You can access self.enable_retry here
-    async def call_model(self, prompt: dict, stream=True):
+    async def call_model(self, prompt: dict, stream=False):
         """
         Call the language model with the provided prompt and retrieve the response.
 
@@ -137,7 +139,7 @@ class AICaller:
 
         try:
             self.logger.info(f"📣 Calling LLM from {caller_name}()...")
-            response = litellm.completion(**completion_params)
+            response = await litellm.acompletion(**completion_params)
         except Exception as e:
             self.logger.error(f"Error calling LLM model: {e}")
             raise e
@@ -146,11 +148,11 @@ class AICaller:
             chunks = []
             self.logger.info("Streaming results from LLM model...")
             try:
-                for chunk in response:
+                async for chunk in response:
                     print(chunk.choices[0].delta.content or "", end="", flush=True)
                     chunks.append(chunk)
                     # Optional: Delay to simulate more 'natural' response pacing
-                    time.sleep(0.01)
+                    await asyncio.sleep(0.01)
 
             except Exception as e:
                 self.logger.error(f"Error calling LLM model during streaming: {e}")
