@@ -33,7 +33,7 @@ class CoverAgent:
     def __init__(
         self,
         config: CoverAgentConfig,
-        task_id: int = 0,
+        task_id: int = None,
         agent_completion: AgentCompletionABC = None,
         built_tool_adapter: Optional[BuiltToolAdapterABC] = None,
         logger: Optional[CustomLogger] = None,
@@ -58,9 +58,10 @@ class CoverAgent:
         self.config = config
         self.generate_log_files = not config.suppress_log_files
         self.adapter = built_tool_adapter
+        self.task_id = task_id
 
         # Initialize logger with file generation flag
-        self.logger = logger or CustomLogger.get_logger(__name__, generate_log_files=self.generate_log_files)
+        self.logger = logger or CustomLogger.get_logger(__name__, task_id, os.path.basename(config.test_file_path), generate_log_files=self.generate_log_files)
         if config.suppress_log_files:
             self.logger.info("Suppressed all generated log files.")
 
@@ -76,6 +77,7 @@ class CoverAgent:
                 caller=self.ai_caller, generate_log_files=self.generate_log_files
             )
 
+    async def _setup(self):
         # Modify test command for a single test execution if needed
         test_command = self.config.test_command
         new_command_line = None
@@ -89,7 +91,7 @@ class CoverAgent:
                 new_command_line = adapt_test_command(test_command, test_file_relative_path)
 
             if not new_command_line:
-                new_command_line, _, _, _ = self.agent_completion.adapt_test_command_for_a_single_test_via_ai(
+                new_command_line, _, _, _ = await self.agent_completion.adapt_test_command_for_a_single_test_via_ai(
                 # Use AI to adapt test commands
                     test_file_relative_path=test_file_relative_path,
                     test_command=test_command,
@@ -104,6 +106,7 @@ class CoverAgent:
                 f"Converting test command: `{test_command}`\n to run only a single test: `{new_command_line}`"
             )
 
+        # UnitTestGenerator and UnitTestValidator depends on new_command_line so put here
         # Initialize test generator with configuration
         self.test_gen = UnitTestGenerator(
             source_file_path=self.config.source_file_path,
@@ -121,7 +124,7 @@ class CoverAgent:
             use_report_coverage_feature_flag=self.config.use_report_coverage_feature_flag,
             agent_completion=self.agent_completion,
             generate_log_files=self.generate_log_files,
-            task_id=task_id,
+            task_id=self.task_id,
         )
 
         # Initialize test validator with configuration
@@ -145,8 +148,25 @@ class CoverAgent:
             agent_completion=self.agent_completion,
             max_run_time_sec=self.config.max_run_time_sec,
             generate_log_files=self.generate_log_files,
-            task_id=task_id,
+            task_id=self.task_id,
         )
+
+
+    @classmethod
+    async def create(
+        cls,
+        config: CoverAgentConfig,
+        task_id: int = None,
+        agent_completion: AgentCompletionABC = None,
+        built_tool_adapter: Optional[BuiltToolAdapterABC] = None,
+        logger: Optional[CustomLogger] = None,
+    ):
+        '''
+        factory method to hanlde two phase __init__ method and async _setup method
+        '''
+        cover_agent = cls(config, task_id, agent_completion, built_tool_adapter, logger)
+        await cover_agent._setup()
+        return cover_agent
 
     def _initialize_ai_caller(self):
         """
@@ -163,6 +183,7 @@ class CoverAgent:
             "test_file": self.config.test_file_path,
             "record_mode": True,
             "generate_log_files": self.generate_log_files,
+            "task_id": self.task_id,
         }
         if self.config.record_mode:
             # In record mode, always use AICaller
@@ -252,7 +273,7 @@ class CoverAgent:
             wandb.init(project="cover-agent", name=run_name)
 
         # Run initial test suite analysis
-        self.test_validator.initial_test_suite_analysis()
+        await self.test_validator.initial_test_suite_analysis()
         failed_test_runs, language, test_framework, coverage_report = await self.test_validator.get_coverage()
 
         return failed_test_runs, language, test_framework, coverage_report
@@ -268,7 +289,7 @@ class CoverAgent:
             coverage_report (dict): Current coverage metrics
         """
         self.log_coverage()
-        generated_tests_dict = self.test_gen.generate_tests(failed_test_runs, language, test_framework, coverage_report)
+        generated_tests_dict = await self.test_gen.generate_tests(failed_test_runs, language, test_framework, coverage_report)
 
         try:
             test_results = [
