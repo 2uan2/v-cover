@@ -74,7 +74,8 @@ class AICaller:
         self.record_replay_manager = record_replay_manager or RecordReplayManager(
             record_mode=record_mode, generate_log_files=generate_log_files
         )
-        self.logger = logger or CustomLogger.get_logger(__name__, task_id, os.path.basename(test_file) if test_file else None, generate_log_files=generate_log_files)
+        caller_name = get_original_caller()
+        self.logger = logger or CustomLogger.get_logger(f"{__name__} - {caller_name}", task_id, os.path.basename(test_file) if test_file else None, generate_log_files=generate_log_files)
 
     @conditional_retry  # You can access self.enable_retry here
     async def call_model(self, prompt: dict, stream=False):

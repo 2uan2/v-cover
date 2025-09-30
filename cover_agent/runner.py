@@ -21,7 +21,7 @@ class Runner:
         command_start_time = int(time.time() * 1000)  # Get the current time in milliseconds
 
         try:
-            print("test command is: ", command)
+            # print("test command is: ", command)
             proc = await asyncio.create_subprocess_shell(
                 command,
                 stdout=asyncio.subprocess.PIPE,
@@ -33,11 +33,11 @@ class Runner:
                 # timeout=max_run_time_sec,
             )
             stdout, stderr = await proc.communicate()
-            print(f'[{command!r} exited with {proc.returncode}]')
-            if stdout:
-                print(f'[stdout]\n{stdout.decode()}')
-            if stderr:
-                print(f'[stderr]\n{stderr.decode()}')
+            # print(f'[{command!r} exited with {proc.returncode}]')
+            # if stdout:
+                # print(f'[stdout]\n{stdout.decode()}')
+            # if stderr:
+                # print(f'[stderr]\n{stderr.decode()}')
 
             # result = subprocess.run(
             #     command,

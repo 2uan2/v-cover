@@ -182,7 +182,7 @@ def main():
     settings = get_settings().get("default")
     args = parse_args(settings)
     config = CoverAgentConfig.from_cli_args_with_defaults(args)
-    agent = CoverAgent(config)
+    agent = CoverAgent.create(config)
     asyncio.run(agent.run())
 
 

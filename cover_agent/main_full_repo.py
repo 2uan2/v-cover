@@ -5,7 +5,7 @@ import logging
 import datetime
 import os
 import argparse
-from typing import Union
+from typing import Union, Optional
 from pathlib import Path
 
 from cover_agent.ai_caller import AICaller
@@ -16,33 +16,43 @@ from cover_agent.settings.config_schema import CoverAgentConfig
 from cover_agent.utils import find_test_files, parse_args_full_repo
 from cover_agent.testable_file_finder import TestableFileFinder
 from cover_agent.test_file_generator import TestFileGenerator
-from cover_agent.build_tool_adapter import MavenAdapter
+from cover_agent.build_tool_adapter import MavenAdapter, BuiltToolAdapterABC, get_built_tool_adapter
+from cover_agent.custom_logger import CustomLogger
 
 
-async def process_test_file(test_file: Union[str, Path], adapter: MavenAdapter, context_helper: ContextHelper, ai_caller: AICaller, args: argparse.Namespace, logger, task_id: int):
+async def process_test_file(test_file: Union[str, Path], adapter: BuiltToolAdapterABC, context_helper: ContextHelper, args: argparse.Namespace, task_id: int, logger: Optional[CustomLogger] = None):
     """Process a single test file asynchronously."""
     try:
-        print(f"\n[Task {task_id}] Processing test file: {test_file} at {datetime.datetime.now()}")
+        # create a logger, each logger is assoc
+        logger = logger or CustomLogger.get_logger(__name__, task_id, os.path.basename(test_file), generate_log_files=False)
+        # print("----------------")
+        # print(os.path.basename(test_file))
+        # print(f"\n[Task {task_id}] Processing test file: {test_file} at {datetime.datetime.now()}")
         # Find the context files for the test file
         all_context: list[tuple] = await context_helper.find_all_context(test_file)
         # print(f"\n[Task {task_id}] all context are: ", all_context)
-        context_files: list[Path] = [ context_file for context_file, _, _, _ in all_context ]
-        print("[Task {}] Context files for test file '{}':\n{}".format(task_id, test_file, "".join(f"{f}\n" for f in all_context)))
+        context_files: set[Path] = { context_file for context_file, _, _, _ in all_context }
+        logger.info("Context files:\n{}".format("".join(f"{f}\n" for f in all_context)))
+        logger.info(f"Set of context files: {context_files}")
 
+        generate_log_files = not args.suppress_log_files
+        api_base = getattr(args, "api_base", "")
+
+        ai_caller = AICaller(task_id=task_id, test_file=test_file, model=args.model, api_base=api_base, generate_log_files=generate_log_files)
         # Analyze the test file against the context files
-        print(f"\n[Task {task_id}] Analyzing test file against context files...")
+        logger.info(f"\nAnalyzing test file against context files...")
         source_file, context_files_include = await context_helper.analyze_context(
             test_file, context_files, ai_caller
         )
-        print("[=================================================]")
-        print("source file is:")
-        print(source_file)
+        # print("[=================================================]")
+        # print("source file is:")
+        # print(source_file)
         all_context_no_test = []
         for context_file in all_context:
             if Path(context_file[0]).resolve() != Path(test_file).resolve():
                 all_context_no_test.append(context_file)
-        print("context file are:")
-        print(all_context_no_test)
+        # print("context file are:")
+        # print(all_context_no_test)
 
 
         if source_file:
@@ -58,17 +68,17 @@ async def process_test_file(test_file: Union[str, Path], adapter: MavenAdapter, 
                 args_copy.code_coverage_report_path = adapter.get_coverage_path(test_file)
 
                 config = CoverAgentConfig.from_cli_args_with_defaults(args_copy)
-                agent = CoverAgent(config=config, built_tool_adapter=adapter)
+                agent = await CoverAgent.create(config=config, task_id=task_id, built_tool_adapter=adapter)
                 await agent.run()
                 return (test_file, True, None)
             except Exception as e:
-                print(f"[Task {task_id}] Error running CoverAgent for test file '{test_file}': {e}")
+                logger.error(f"Error running CoverAgent: {e}")
                 raise
                 return (test_file, False, f"CoverAgent error: {str(e)}")
         else:
             return (test_file, False, "No source file found")
     except Exception as e:
-        print(f"[Task {task_id}] Error processing test file '{test_file}': {e}")
+        logger.error(f"Error processing: {e}")
         raise
         return (test_file, False, f"Processing error: {str(e)}")
 
@@ -96,8 +106,8 @@ async def generate_test_file(source_file, test_file_path, test_content, context_
 
 async def run():
     # Setup logger
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.INFO)
+    # logger = logging.getLogger(__name__)
+    # logger.setLevel(logging.INFO)
 
     settings = get_settings().get("default")
     args: argparse.Namespace = parse_args_full_repo(settings)
@@ -141,10 +151,6 @@ async def run():
     async with context_helper.start_server():
         print("LSP server initialized.")
 
-        generate_log_files = not args.suppress_log_files
-        api_base = getattr(args, "api_base", "")
-        ai_caller = AICaller(model=args.model, api_base=api_base, generate_log_files=generate_log_files)
-
         # First, generate empty test files for files without tests
         if files_needing_tests:
             print(f"\n============\nGenerating {len(files_needing_tests)} empty test files...")
@@ -167,13 +173,13 @@ async def run():
             print(f"✅ Successfully created: {len(successful_generations)} test files")
             print(f"❌ Failed: {len(failed_generations)} test files")
 
-        adapter = MavenAdapter(args.test_command ,args.project_root)
+        adapter = get_built_tool_adapter(args.test_command, args.project_root, args.project_language)
 
         try:
             if adapter: 
                 adapter.prepare_environment()
             # Process all test files concurrently
-            tasks = [process_test_file(test_file, adapter, context_helper, ai_caller, args, logger, task_id) 
+            tasks = [process_test_file(test_file, adapter, context_helper, args, task_id) 
                      for task_id, test_file in enumerate(test_files, 1)]
             results = await asyncio.gather(*tasks)
         finally:

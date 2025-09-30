@@ -86,7 +86,7 @@ async def analyze_context(test_file, context_files, args, ai_caller):
         context_files_rel_filtered_list_str = ""
         for file in context_files:
             context_files_rel_filtered_list_str += (
-                f"`{os.path.relpath(file, args.project_root)}\n`"
+                f"`{os.path.relpath(file, args.project_root)}`\n"
             )
         variables = {
             "language": args.project_language,
