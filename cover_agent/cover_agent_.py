@@ -2,6 +2,7 @@ import datetime
 import os
 import shutil
 import sys
+import asyncio
 
 from typing import Optional
 
@@ -77,7 +78,8 @@ class CoverAgent:
                 caller=self.ai_caller, generate_log_files=self.generate_log_files
             )
 
-    async def _setup(self):
+    async def _setup(self, semaphore: asyncio.Semaphore):
+        self.semaphore = semaphore
         # Modify test command for a single test execution if needed
         test_command = self.config.test_command
         new_command_line = None
@@ -149,6 +151,8 @@ class CoverAgent:
             max_run_time_sec=self.config.max_run_time_sec,
             generate_log_files=self.generate_log_files,
             task_id=self.task_id,
+            run_command_async=self.config.run_command_async,
+            semaphore=self.semaphore,
         )
 
 
@@ -159,13 +163,14 @@ class CoverAgent:
         task_id: int = None,
         agent_completion: AgentCompletionABC = None,
         built_tool_adapter: Optional[BuiltToolAdapterABC] = None,
+        semaphore: asyncio.Semaphore = None,
         logger: Optional[CustomLogger] = None,
     ):
         '''
         factory method to hanlde two phase __init__ method and async _setup method
         '''
         cover_agent = cls(config, task_id, agent_completion, built_tool_adapter, logger)
-        await cover_agent._setup()
+        await cover_agent._setup(semaphore)
         return cover_agent
 
     def _initialize_ai_caller(self):
@@ -225,7 +230,7 @@ class CoverAgent:
         """
         # Ensure the source file exists
         if not os.path.isfile(self.config.source_file_path):
-            raise FileNotFoundError(f"Source file not found at {self.config.source_file_path}")
+            raise FileNotFoundError(f"Source file not found at {self.config.source_file_path} for {self.config.test_file_path}")
         # Ensure the test file exists
         if not os.path.isfile(self.config.test_file_path):
             raise FileNotFoundError(f"Test file not found at {self.config.test_file_path}")
@@ -273,8 +278,11 @@ class CoverAgent:
             wandb.init(project="cover-agent", name=run_name)
 
         # Run initial test suite analysis
+        self.logger.info("Starting initial test suite analysis.")
         await self.test_validator.initial_test_suite_analysis()
+        self.logger.info("Initial test suite analysis complete. Getting initial coverage.")
         failed_test_runs, language, test_framework, coverage_report = await self.test_validator.get_coverage()
+        self.logger.info("Initial coverage obtained.")
 
         return failed_test_runs, language, test_framework, coverage_report
 
@@ -289,6 +297,7 @@ class CoverAgent:
             coverage_report (dict): Current coverage metrics
         """
         self.log_coverage()
+        self.logger.info("Starting test generation and validation.")
         generated_tests_dict = await self.test_gen.generate_tests(failed_test_runs, language, test_framework, coverage_report)
 
         try:
@@ -322,11 +331,13 @@ class CoverAgent:
             tuple: Contains updated test results, language info, framework details,
                   coverage report, and boolean indicating if target is reached.
         """
+        self.logger.info("Starting check iteration progress")
         failed_runs, lang, framework, report = await self.test_validator.get_coverage()
+        self.logger.info("Coverage for new iteration obtained.")
         target_reached = self.test_validator.current_coverage >= (self.test_validator.desired_coverage / 100)
         return failed_runs, lang, framework, report, target_reached
 
-    def finalize_test_generation(self, iteration_count):
+    def finalize_test_generation(self, iteration_count) -> (int, int):
         """
         Complete the test generation process and produce final reports.
 
@@ -361,13 +372,15 @@ class CoverAgent:
                 self.logger.info(failure_message)
 
         # Log token usage
+        total_input_token = self.test_gen.total_input_token_count + self.test_validator.total_input_token_count
+        total_output_token = self.test_gen.total_output_token_count + self.test_validator.total_output_token_count
         self.logger.info(
             f"Total number of input tokens used for LLM model {self.config.model}: "
-            f"{self.test_gen.total_input_token_count + self.test_validator.total_input_token_count}"
+            f"{total_input_token}"
         )
         self.logger.info(
             f"Total number of output tokens used for LLM model {self.config.model}: "
-            f"{self.test_gen.total_output_token_count + self.test_validator.total_output_token_count}"
+            f"{total_output_token}"
         )
 
         # Only generate report if file generation is enabled
@@ -377,6 +390,8 @@ class CoverAgent:
         if "WANDB_API_KEY" in os.environ:
             wandb.finish()
 
+        return total_input_token, total_output_token
+
     def log_coverage(self):
         """Log current coverage metrics, differentiating between diff coverage and full coverage."""
         if self.config.diff_coverage:
@@ -385,7 +400,7 @@ class CoverAgent:
             self.logger.info(f"Current Coverage: {round(self.test_validator.current_coverage * 100, 2)}%")
         self.logger.info(f"Desired Coverage: {self.test_validator.desired_coverage}%")
 
-    async def run(self):
+    async def run(self) -> (int, int):
         """
         Execute the main test generation loop until coverage goals are met or iterations exhausted.
 
@@ -410,4 +425,4 @@ class CoverAgent:
 
             iteration_count += 1
 
-        self.finalize_test_generation(iteration_count)
+        return self.finalize_test_generation(iteration_count)

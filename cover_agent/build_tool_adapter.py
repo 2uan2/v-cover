@@ -1,7 +1,10 @@
 import os
 import shutil
+import platform
 from pathlib import Path
+
 from abc import ABC, abstractmethod
+from cover_agent.lsp_logic.utils.utils import is_forbidden_directory
 
 class BuiltToolAdapterABC(ABC):
     '''
@@ -45,6 +48,7 @@ class MavenAdapter(BuiltToolAdapterABC):
     def adapt_test_command(self, test_file_relative_path: str) -> str:
         file_name = os.path.basename(test_file_relative_path)
         class_name = os.path.splitext(file_name)[0]
+        test_file_relative_path = Path(test_file_relative_path)
 
         # Remove existing -Dtest arguments
         args = self.repo_test_command.split()
@@ -55,6 +59,13 @@ class MavenAdapter(BuiltToolAdapterABC):
                 continue
             new_args.append(arg)
 
+        # touch to modify file time so that maven recompiles file
+        if platform.system() == "Windows":
+            new_args.insert(0, f"(Get-Item {test_file_relative_path.resolve()}).LastWriteTime = Get-Date")
+        else:
+            new_args.insert(0, f"touch {test_file_relative_path.resolve()}")
+        new_args.insert(1, "&&")
+            
         new_args.append(f"-Dtest={class_name}")
         new_args.append(f"-Djacoco.destFile={self.default_output_path / Path(f'jacoco-{class_name}.exec')}")
         new_args.append(f"-Djacoco.dataFile={self.default_output_path / Path(f'jacoco-{class_name}.exec')}")
@@ -89,7 +100,14 @@ class MavenAdapter(BuiltToolAdapterABC):
         outputDirectoryStr = f'{{{namespace["m"]}}}outputDirectory'
         root = tree.getroot()
 
-        configurations = root.find("m:build/m:plugins/m:plugin/[m:artifactId='jacoco-maven-plugin']/m:configuration", namespace)
+        jacoco_maven_plugin = root.find("m:build/m:plugins/m:plugin/[m:artifactId='jacoco-maven-plugin']", namespace)
+        if jacoco_maven_plugin.find("m:configuration", namespace) == None:
+            jacoco_maven_plugin.append(ET.Element(f"{{{namespace['m']}}}configuration"))
+            ET.register_namespace('', 'http://maven.apache.org/POM/4.0.0')
+            tree.write(absolute_pom_path)
+
+        configurations = jacoco_maven_plugin.find("m:configuration", namespace)
+
         config_tags = []
         for config in configurations:
             config_tags.append(config.tag)
@@ -101,7 +119,7 @@ class MavenAdapter(BuiltToolAdapterABC):
                 # # is a custom hard coded string
                 # else:
                 config.text = f'${{{self.output_directory_variable}}}'
-                ET.register_namespace("", "http://maven.apache.org/POM/4.0.0")
+                ET.register_namespace('', 'http://maven.apache.org/POM/4.0.0')
                 tree.write(absolute_pom_path)
 
         if outputDirectoryStr not in config_tags:

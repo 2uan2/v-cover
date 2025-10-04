@@ -18,22 +18,41 @@ from cover_agent.testable_file_finder import TestableFileFinder
 from cover_agent.test_file_generator import TestFileGenerator
 from cover_agent.build_tool_adapter import MavenAdapter, BuiltToolAdapterABC, get_built_tool_adapter
 from cover_agent.custom_logger import CustomLogger
+from cover_agent.lsp_logic.utils.utils import remove_duplicate_included_files
 
 
-async def process_test_file(test_file: Union[str, Path], adapter: BuiltToolAdapterABC, context_helper: ContextHelper, args: argparse.Namespace, task_id: int, logger: Optional[CustomLogger] = None):
-    """Process a single test file asynchronously."""
+async def process_test_file(
+        test_file: Union[str, Path],
+        adapter: BuiltToolAdapterABC,
+        context_helper: ContextHelper,
+        args: argparse.Namespace,
+        semaphore: asyncio.Semaphore = None,
+        task_id: int = None,
+        logger: Optional[CustomLogger] = None
+) -> (str, int, int, bool, str):
+    """
+    Process a single test file asynchronously.
+    Returns:
+        test_file (str): The initialized AI caller instance
+        input_token_count (int): The amount of token used as input for processing this file
+        output_token_count (int): The amount of token used as output for processign this file
+        success (bool): Whether generation was a success or not
+        error (str): The error string, if any
+    """
+
+    total_input_token = 0
+    total_output_token = 0
     try:
         # create a logger, each logger is assoc
         logger = logger or CustomLogger.get_logger(__name__, task_id, os.path.basename(test_file), generate_log_files=False)
-        # print("----------------")
-        # print(os.path.basename(test_file))
-        # print(f"\n[Task {task_id}] Processing test file: {test_file} at {datetime.datetime.now()}")
+        logger.info(f"Test file is: {test_file}")
+
         # Find the context files for the test file
         all_context: list[tuple] = await context_helper.find_all_context(test_file)
-        # print(f"\n[Task {task_id}] all context are: ", all_context)
-        context_files: set[Path] = { context_file for context_file, _, _, _ in all_context }
-        logger.info("Context files:\n{}".format("".join(f"{f}\n" for f in all_context)))
-        logger.info(f"Set of context files: {context_files}")
+        deduped_context = remove_duplicate_included_files(all_context)
+        context_files: set[Path] = { context_file for context_file, _, _, _, _ in deduped_context }
+        logger.info("All context files:\n{}".format("".join(f"{f}\n" for f in deduped_context)))
+        logger.info("Set of context file paths\n{}".format("".join(f"{f}\n" for f in context_files)))
 
         generate_log_files = not args.suppress_log_files
         api_base = getattr(args, "api_base", "")
@@ -41,18 +60,20 @@ async def process_test_file(test_file: Union[str, Path], adapter: BuiltToolAdapt
         ai_caller = AICaller(task_id=task_id, test_file=test_file, model=args.model, api_base=api_base, generate_log_files=generate_log_files)
         # Analyze the test file against the context files
         logger.info(f"\nAnalyzing test file against context files...")
-        source_file, context_files_include = await context_helper.analyze_context(
+        source_file, context_files_include, context_input_token, context_output_token = await context_helper.analyze_context(
             test_file, context_files, ai_caller
         )
         # print("[=================================================]")
         # print("source file is:")
         # print(source_file)
-        all_context_no_test = []
-        for context_file in all_context:
-            if Path(context_file[0]).resolve() != Path(test_file).resolve():
-                all_context_no_test.append(context_file)
+        all_context_no_test_no_source = []
+        for context_file in deduped_context:
+            if Path(context_file[0]).resolve() != Path(test_file).resolve() and Path(context_file[0]).resolve() != Path(source_file).resolve():
+                all_context_no_test_no_source.append(context_file)
         # print("context file are:")
         # print(all_context_no_test)
+        total_input_token += context_input_token
+        total_output_token += context_output_token
 
 
         if source_file:
@@ -63,24 +84,25 @@ async def process_test_file(test_file: Union[str, Path], adapter: BuiltToolAdapt
                 args_copy.test_command_dir = args.project_root
                 args_copy.test_file_path = test_file
                 args_copy.included_files = context_files_include
-                args_copy.all_included_files = all_context_no_test 
+                args_copy.all_included_files = all_context_no_test_no_source 
                 # args_copy.test_command = adapter.adapt_test_command(test_file)
                 args_copy.code_coverage_report_path = adapter.get_coverage_path(test_file)
 
                 config = CoverAgentConfig.from_cli_args_with_defaults(args_copy)
-                agent = await CoverAgent.create(config=config, task_id=task_id, built_tool_adapter=adapter)
-                await agent.run()
-                return (test_file, True, None)
+                agent = await CoverAgent.create(config=config, task_id=task_id, built_tool_adapter=adapter, semaphore=semaphore)
+
+                input_token, output_token = await agent.run()
+                total_input_token += input_token
+                total_output_token += output_token
+                return (test_file, total_input_token, total_output_token, True, None)
             except Exception as e:
                 logger.error(f"Error running CoverAgent: {e}")
-                raise
-                return (test_file, False, f"CoverAgent error: {str(e)}")
+                return (test_file, total_input_token, total_output_token, False, f"CoverAgent error: {str(e)}")
         else:
-            return (test_file, False, "No source file found")
+            return (test_file, total_input_token, total_output_token, False, "No source file found")
     except Exception as e:
         logger.error(f"Error processing: {e}")
-        raise
-        return (test_file, False, f"Processing error: {str(e)}")
+        return (test_file, total_input_token, total_output_token, False, f"Processing error: {str(e)}")
 
 
 async def generate_test_file(source_file, test_file_path, test_content, context_helper, task_id):
@@ -111,6 +133,8 @@ async def run():
 
     settings = get_settings().get("default")
     args: argparse.Namespace = parse_args_full_repo(settings)
+
+    semaphore = asyncio.Semaphore(1)
 
     if args.project_language == "python" or args.project_language == "java":
         context_helper = ContextHelper(args)
@@ -179,9 +203,11 @@ async def run():
             if adapter: 
                 adapter.prepare_environment()
             # Process all test files concurrently
-            tasks = [process_test_file(test_file, adapter, context_helper, args, task_id) 
+            tasks = [process_test_file(test_file=test_file, adapter=adapter, context_helper=context_helper, args=args, task_id=task_id, semaphore=semaphore) 
                      for task_id, test_file in enumerate(test_files, 1)]
             results = await asyncio.gather(*tasks)
+            total_input_token = sum([input for f, input, output, r, e in results])
+            total_output_token = sum([output for f, input, output, r, e in results])
         finally:
             if adapter:
                 adapter.cleanup_environment()
@@ -191,17 +217,8 @@ async def run():
         print("EXECUTION SUMMARY")
         print("="*80)
         
-        successful_files = [(f, r, e) for f, r, e in results if r]
-        failed_files = [(f, r, e) for f, r, e in results if not r]
-        
-        print(f"\nTotal test files processed: {len(results)}")
-        print(f"✅ Successful: {len(successful_files)}")
-        print(f"❌ Failed: {len(failed_files)}")
-        
-        if successful_files:
-            print("\n✅ Successfully processed files:")
-            for file, _, _ in successful_files:
-                print(f"   - {file}")
+        successful_files = [(f, r, e) for f, input, output, r, e in results if r]
+        failed_files = [(f, r, e) for f, input, output, r, e in results if not r]
         
         if failed_files:
             print("\n❌ Failed files:")
@@ -209,7 +226,19 @@ async def run():
                 print(f"   - {file}")
                 if error:
                     print(f"     Error: {error}")
+
+        print(f"\nTotal test files processed: {len(results)}")
+        print(f"✁ESuccessful: {len(successful_files)}")
+        print(f"❁EFailed: {len(failed_files)}")
         
+        if successful_files:
+            print("\n✁ESuccessfully processed files:")
+            for file, _, _ in successful_files:
+                print(f"   - {file}")
+        
+        if total_input_token:
+            print(f"\nSystem used {total_input_token} input token in total")
+            print(f"\nSystem used {total_output_token} output token in total")
         print("\n" + "="*80)
 
 

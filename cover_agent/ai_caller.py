@@ -139,7 +139,7 @@ class AICaller:
             completion_params["api_base"] = self.api_base
 
         try:
-            self.logger.info(f"📣 Calling LLM from {caller_name}()...")
+            self.logger.info(f"📣 Calling LLM from {caller_name}() with prompt \n\n\n {prompt['user']}")
             response = await litellm.acompletion(**completion_params)
         except Exception as e:
             self.logger.error(f"Error calling LLM model: {e}")
@@ -169,8 +169,8 @@ class AICaller:
         else:
             # Non-streaming response is a CompletionResponse object
             content = response.choices[0].message.content
-            self.logger.info("Printing results from LLM model...")
-            print(content)
+            self.logger.info(f"Printing results from LLM model... \n {content}")
+            # print(content)
             usage = response.usage
             prompt_tokens = int(usage.prompt_tokens)
             completion_tokens = int(usage.completion_tokens)
