@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from typing import Optional
 
 from grep_ast import TreeContext
 from grep_ast.parsers import PARSERS, filename_to_lang
@@ -135,7 +136,19 @@ class FileMap:
         '''
         return self.get_tag("test")
 
-    def get_range(self, line: int) -> list[tuple[int, int]]:
+    def get_range(self, line: int) -> Optional[tuple[int, int]]:
+        """
+        Finds all enclosing structural ranges (like functions or classes) for a given line number in the file.
+        This method uses tree-sitter to parse the file and identify all structural elements
+        (based on the language's query scheme). It then checks which of these elements
+        contain the specified line number and returns a list of their start and end lines.
+        Args:
+        line (int): The 0-indexed line number to find the enclosing ranges for.
+
+        Returns:
+            Optional[tuple[int, int]]: A single (start_line, end_line) tuple for the smallest
+                                    enclosing block, or None if no enclosing block is found.
+        """
         fname_rel = self.fname_rel
         code = self.code
         lang = filename_to_lang(fname_rel)
@@ -143,37 +156,38 @@ class FileMap:
             return
 
         try:
+            # Get the tree-sitter parser and language for the file's language.
             language = get_language(lang)
             parser = get_parser(lang)
         except Exception as err:
             print(f"Skipping file {fname_rel}: {err}")
             return
 
+        # Load the tree-sitter queries for the language.
         query_scheme_str = get_queries_scheme(lang)
         tree = parser.parse(bytes(code, "utf-8"))
 
-        # Run the queries
+        # Run the queries to get all captures (tagged nodes in the syntax tree).
         query = language.query(query_scheme_str)
         captures: list[tuple[Node, str]] = list(query.captures(tree.root_node))
-        # print("================")
-        # print("query: ", query)
-        # print("---")
-        # print("captures: ", captures)
         potential = []
+        # Iterate through all the captured nodes.
         for capture in captures:
-            # print("lololololaaaaaaaaaaaaaaaaaa")
-            # print(capture)
             start_line: int = capture[0].start_point[0]
             end_line: int = capture[0].end_point[0]
             is_method: bool = capture[1].endswith("method")
-            # print("start: ", start_line)
-            # print("end: ", end_line)
-            # start and end line not the same to make sure a function span more than a line, or should it?
-            # since lambda functions might span only a line
+            # Check if the given line is within the start and end lines of the captured node.
+            # We also ensure the node spans more than one line to filter out single-line constructs.
             if (line <= end_line and line >= start_line and start_line != end_line):# and is_method):
                 potential.append((start_line, end_line))
-        # print("potential range: ", potential)
-        return potential
+
+        print('ranges: ', potential)
+        if not potential:
+            return None
+
+        # Find and return the smallest range (smallest difference between end and start)
+        smallest_range = min(potential, key=lambda r: r[1] - r[0])
+        return smallest_range
 
     def get_query_results_in_range(self, start_line: int = 0, end_line: int = -1) -> tuple[list[dict], list] | None:
         '''
@@ -211,6 +225,8 @@ class FileMap:
                     kind = "def"
                 elif tag.startswith("name.reference."):
                     kind = "ref"
+                elif tag == "dot.class":
+                    kind = "ref"
                 else:
                     continue
 
@@ -219,6 +235,7 @@ class FileMap:
                     fname=fname_rel,
                     name=node.text.decode("utf-8"),
                     kind=kind,
+                    tag=tag,
                     column=node.start_point[1],
                     start=node.start_point[0],
                     end=node.end_point[0],

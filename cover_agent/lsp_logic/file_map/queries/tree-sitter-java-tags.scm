@@ -22,3 +22,6 @@
 (method_declaration) @test
 
 (import_declaration) @import
+
+; # TODO find a better name for this maybe
+(class_literal) @dot.class

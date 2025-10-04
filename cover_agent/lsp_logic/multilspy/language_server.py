@@ -729,47 +729,93 @@ class LanguageServer:
                         context_symbols_and_files.add((name_symbol, rel_d_path))
         return context_files, context_symbols
 
-    async def get_direct_context_file_and_line(self, query_results: list[dict], captures: list[tuple[Node, str]], language: str, project_dir: str, rel_file: str) -> set[tuple[str, str, int]]:
-        target_file = str(os.path.join(project_dir, rel_file))
-        absolute_file = str(os.path.abspath(rel_file))
+    async def get_direct_context_file_and_line(self, query_results: list[dict], captures: list[tuple[Node, str]], language: str, project_dir: str, rel_file: str) -> set[tuple[str, str, str, int]]:
+        """
+        Finds the definition locations for symbols found in a file and returns them.
+        This function iterates through a list of symbols (query_results) found by tree-sitter.
+        For each symbol, it makes an LSP "go to definition" request to find where the symbol is defined.
+        It then filters the results to include only relevant definitions within the project directory
+        and returns a set of tuples, each containing the file path, symbol name, and the
+        starting line number of the definition.
+     
+        Args:
+            query_results: A list of dictionaries, where each dictionary represents a symbol
+            found by tree-sitter and contains its name, start line, and column.
+            captures: The raw tree-sitter captures (currently unused in this function but
+            kept for potential future use or consistency with other functions).
+            language: The programming language of the file.
+            project_dir: The absolute path to the project's root directory.
+            rel_file: The relative path of the file containing the symbols.
+        Returns:
+            A set of tuples, where each tuple is (file_path, symbol_name, symbol_scope, start_line_of_definition).
+            symbol_scope here are defined in treesitter scm queries, e.g. definition.class, reference.method, ... (check out .scm file in lsp_logic/file_map/queries)
+        """
+        project_dir = pathlib.Path(project_dir)
+        rel_file = pathlib.Path(rel_file)
+        target_file = project_dir / rel_file
+        absolute_file = rel_file.resolve()
         skip_found_symbols = True
+
+        # A set to store the final results: (file_path, symbol_name, start_line)
         context_files = set()
+
+        # A set to keep track of symbol names that have already been processed to avoid duplicates.
         context_symbols = set()
+
+        # A set to track combinations of symbol name and file path to avoid processing the same definition multiple times.
         context_symbols_and_files = set()
+
+        # Iterate over each symbol found by tree-sitter.
         for result in query_results:
-            name_symbol = result['name']
-            if name_symbol in context_symbols and skip_found_symbols:
+            # print(result)
+
+            symbol_scope = result['tag']
+
+            # If we've already found the definition for this symbol name, skip it.
+            symbol_name = result['name']
+            if symbol_name in context_symbols and skip_found_symbols:
                 continue
             try:
-                symbol_definition = await self.request_definition(
+                # Send a "textDocument/definition" request to the LSP server.
+                symbol_definitions = await self.request_definition(
                     absolute_file, line=result['start'], column=result['column']
                 )
                 # print(f"symbol_definition: {symbol_definition}")
                 # sleep(0.01)
             except Exception as e:
-                print(f"Error requesting definition for {name_symbol}: {e}")
-                symbol_definition = []
-            for d in symbol_definition:
+                print(f"Error requesting definition for {symbol_name}: {e}")
+                symbol_definitions = []
+
+            # Process the list of definitions returned by the LSP server.
+            for symbol in symbol_definitions:
                 # print("-------")
                 # print("d: ", d)
+                # {'uri': 'file:///home/quan/qodo/q-cover/templated_tests/java_spring_calculator/src/main/java/com/example/calculator/service/CalculatorService.java', 'range': {'start': {'line': 10, 'character': 18}, 'end': {'line': 10, 'character': 26}}, 'absolutePath': '/home/quan/qodo/q-cover/templated_tests/java_spring_calculator/src/main/java/com/example/calculator/service/CalculatorService.java', 'relativePath': 'src/main/java/com/example/calculator/service/CalculatorService.java'}
                 # line = result['start']
-                d_path = uri_to_path(d["uri"])
+                symbol_path = pathlib.Path(uri_to_path(symbol["uri"])).resolve()
                 # print("d_path: ", d_path)
-                d_start = d["range"]["start"]["line"]
+                symbol_start = symbol["range"]["start"]["line"]
                 # d_start = result['start']
-                rel_d_path = os.path.relpath(d_path, project_dir)
+                relative_symbol_path = os.path.relpath(symbol_path, project_dir)
+                # print(f"========= {rel_d_path} ===============")
+
+                # Avoid processing the same symbol definition if it appears multiple times.
                 if (
-                    name_symbol,
-                    rel_d_path,
+                    symbol_name,
+                    relative_symbol_path,
                 ) in context_symbols_and_files and skip_found_symbols:
                     continue
-                if d_path != target_file:
-                    if project_dir not in d_path:
-                        continue
-                    if not is_forbidden_directory(d_path, language):
-                        context_files.add((d_path, name_symbol, d_start)) # return file and line
-                        context_symbols.add(name_symbol)
-                        context_symbols_and_files.add((name_symbol, rel_d_path))
+
+                # Ensure the definition is not in the original file itself and is within the project directory.
+                if symbol_path == target_file or not symbol_path.is_relative_to(project_dir):
+                    continue
+
+                # Check if the file is in a directory that should be ignored (e.g., 'node_modules').
+                if not is_forbidden_directory(symbol_path, language):
+                    # If the definition is valid, add it to our results.
+                    context_files.add((symbol_path, symbol_name, symbol_scope, symbol_start)) # return file and line
+                    context_symbols.add(symbol_name)
+                    context_symbols_and_files.add((symbol_name, relative_symbol_path))
 
         return context_files
     

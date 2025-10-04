@@ -72,7 +72,7 @@ def find_java_primary_file(test_file, project_root):
     return None
 
 
-async def analyze_context(test_file, context_files, args, ai_caller):
+async def analyze_context(test_file, context_files, args, ai_caller) -> (str, str, int, int):
     """
     # we now want to analyze the test file against the source files and determine several things:
     # 1. If this test file is a unit test file
@@ -81,6 +81,8 @@ async def analyze_context(test_file, context_files, args, ai_caller):
     """
     source_file = None
     context_files_include = context_files
+    prompt_token_count = 0
+    response_token_count = 0
     try:
         test_file_rel_str = os.path.relpath(test_file, args.project_root)
         context_files_rel_filtered_list_str = ""
@@ -101,9 +103,9 @@ async def analyze_context(test_file, context_files, args, ai_caller):
         user_prompt = environment.from_string(
             get_settings().analyze_test_against_context.user
         ).render(variables)
-        print("0000000000000000000000000000000000000000000000000000000000000000000000")
-        print(user_prompt)
-        print("0000000000000000000000000000000000000000000000000000000000000000000000")
+        # print("0000000000000000000000000000000000000000000000000000000000000000000000")
+        # print(user_prompt)
+        # print("0000000000000000000000000000000000000000000000000000000000000000000000")
         response, prompt_token_count, response_token_count = await ai_caller.call_model(
             prompt={"system": system_prompt, "user": user_prompt}, stream=False
         )
@@ -126,82 +128,145 @@ async def analyze_context(test_file, context_files, args, ai_caller):
     except Exception as e:
         print(f"Error while analyzing test file {test_file} against context files: {e}")
 
-    return source_file, context_files_include
+    return source_file, context_files_include, prompt_token_count, response_token_count
 
-async def find_all_context(args: argparse.Namespace, lsp: LanguageServer, test_file: Path) -> list[tuple[str, str, int, int]]:
+async def find_all_context(args: argparse.Namespace, lsp: LanguageServer, test_file: Path) -> list[tuple[str, str, str, int, int]]:
+    '''
+    find and return all context files using tree-sitter and LSP
+    Returns list of tuple containing:
+        primary_file (str): The primary source file for the test file, or the file under test
+        name (str): Name of the function, method or class that is referenced in the test file, mostly for debugging
+        scope (str): Name of the scope of the symbol, e.g. CalculatorService has a scope of class
+        start_line (int): Start line of the code block
+        end_line (int): End line of the code block
+    '''
     context_files = [] #set()
     # visited = set()
 
     await _recursive_search(0, args, test_file, context_files, lsp)
 
+    if args.project_language == "java" and test_file.endswith(".java"):
+        potential_primary = find_java_primary_file(test_file, args.project_root)
+        if potential_primary:
+            primary_file = potential_primary
+
+            # default to name being class name and start and end line as the start and line of file
+            context_file = (primary_file, os.path.basename(primary_file).split('.')[0], 'class', 0, -1) 
+            context_files.append(context_file)
+
     return context_files
 
 
-async def _recursive_search(call_num: int, args: argparse.Namespace, file: Path, dependency_list: list[tuple], lsp: LanguageServer, visited: set[tuple] = set(), range: tuple[int, int] = (0, -1)):
+async def _recursive_search(call_num: int, args: argparse.Namespace, file: Path, dependency_set: list[tuple], lsp: LanguageServer, visited: set[tuple] = set(), range: tuple[int, int] = (0, -1)):
+    """
+    Recursively searches for the context of a given file or code range.
+    
+    This function is the core of the context discovery process. It starts with a
+    file and finds all code symbols within it. It then uses the Language Server
+    Protocol (LSP) to find the definitions of those symbols, which might be in
+    other files. It then recursively calls itself on those new files to find
+    their dependencies, up to a fixed depth.
+
+    Args:
+        call_num (int): The current recursion depth, used to prevent infinite loops.
+        args (argparse.Namespace): The application's command-line arguments.
+        file (Path): The file to analyze in the current recursion step.
+        dependency_set (list[tuple]): The list where result tuples are accumulated.
+                        This list is modified in place by the function.
+        lsp (LanguageServer): The active LSP client.
+        visited (set[tuple]): A set to track found dependencies to avoid re-processing
+                        and infinite recursion.
+        range (tuple[int, int]): The (start_line, end_line) range within the file
+                        to analyze. Defaults to the entire file.
+    """
+
+    # 1. Stop recursion if the maximum depth is reached.
+    if call_num >= 5:
+        return
     # print("call number: ", call_num)
     # print("+++++")
-    # print(dependency_list)
+    # print(dependency_set)
     call_num = call_num + 1
-    # find symbols in range
-    target_file = file
-    rel_file = os.path.relpath(file, args.project_root)
-    absolute_file = str(os.path.abspath(args.project_root))
 
+    # find symbols in range
+    file = Path(file)
+    absolute_project_dir = Path(args.project_root).resolve()
+    fname_full_path = absolute_project_dir / file
+
+    # 2. Use FileMap and tree-sitter to find all symbols within the current file and range
     fname_summary = FileMap(
-        target_file,
+        fname_full_path,
         parent_context=False,
         child_context=False,
         header_max=0,
         project_base_path=args.project_root,
     )
     query_results, captures = fname_summary.get_query_results_in_range(range[0], range[1])
-    # print("======")
     # print("query_results, captures = ", len(query_results), len(captures))
     # print("======")
     # print("query results are found: ", query_results)
     # print("captures: ", captures)
 
-    # contexts: list[file and line] = get_direct_context(symbols)
-    context_files_and_lines: set[tuple[str, str, int]] = await lsp.get_direct_context_file_and_line(
-        query_results, captures, args.project_language, args.project_root, rel_file
+    # 3. Use LSP to perform a "go to definition" lookup on the found symbols.
+    # This returns a set of (file_path, symbol_name, symbol_scope, definition_start_line) tuples.
+    context_files_and_lines: set[tuple[str, str, str, int]] = await lsp.get_direct_context_file_and_line(
+        query_results, captures, args.project_language, args.project_root, file
     )
+    # print("========context_files_and_lines: ==============")
+    # print(context_files_and_lines)
 
-    if (context_files_and_lines):
-        # print("     ===================")
-        # print("context files found from query results: ")
-        # print(context_files_and_lines)
-        # print("     ===================")
-        for context_file_and_line in context_files_and_lines:
-            context_file, symbol, line = context_file_and_line
-            # print("^^^^^^^^^^^^^^^^^^")
-            # print(context_file_and_line)
-            if Path(context_file).is_relative_to(Path(args.project_root)):
-                continue
-            try:
-                fm = FileMap(
-                    context_file,
-                    parent_context=False,
-                    child_context=False,
-                    header_max=0,
-                    project_base_path=args.project_root,
-                )
-            except FileNotFoundError as e:
-                continue
-            context_ranges: list[tuple[int, int]] = fm.get_range(line)
-            context_range = context_ranges[-1] # choose the context range as the last element for now which is the smallest range [(9, 46), (22, 25)]
-            dependency: tuple = (context_file, symbol, context_range[0], context_range[1])
-            # print(f"found dependency {dependency}")
-            # print(dependency)
-            # if dependency in visited: 
-            #     print(f"dependency {dependency} already found inside visited set {visited}")
-            if dependency not in visited:
-                dependency_list.append(dependency)
-                visited.add(dependency)
-                await _recursive_search(call_num, args, context_file, dependency_list, lsp, visited, context_range)
+    # print("     ===================")
+    # print("context files found from query results: ")
+    # print(context_files_and_lines)
+    # print("     ===================")
+    # 4. Process each definition (dependency) found by the LSP.
+    for context_file_and_line in context_files_and_lines:
+        context_file, symbol_name, symbol_scope, line = context_file_and_line
+        # print("^^^^^^^^^^^^^^^^^^")
+        # print(context_file_and_line)
+        context_file = Path(context_file).resolve()
+        args.project_root = Path(args.project_root).resolve()
+        # print("context_file: ", context_file)
+        # print("args.project_root: ", args.project_root)
+        # print("context file being relative to args.project_root: ", context_file.is_relative_to(args.project_root))
+
+        # print("context file being relative could be: ", os.path.commonpath([args.project_root, context_file]) == args.project_root)
+
+        if not Path(context_file).is_relative_to(Path(args.project_root)):
+            continue
+        try:
+            fm = FileMap(
+                context_file,
+                parent_context=False,
+                child_context=False,
+                header_max=0,
+                project_base_path=args.project_root,
+            )
+        except FileNotFoundError as e:
+            continue
+
+        # 5. Find the full range (e.g., the entire function/class body) of the dependency. 
+        # This gets the smallest range.
+        context_range: Optional[tuple[int, int]] = fm.get_range(line)
+        # If no enclosing range is found, skip this dependency.
+        if not context_range:
+            continue
+
+        # 6. Create the dependency tuple. We convert `context_file` back to a string
+        dependency: tuple = (str(context_file), symbol_name, symbol_scope, context_range[0], context_range[1])
+        # print(f"found dependency {dependency}")
+        # if dependency in visited: 
+        #     print(f"dependency {dependency} already found inside visited set {visited}")
+        if dependency not in visited:
+            dependency_set.append(dependency)
+            visited.add(dependency)
+
+            # 7. Recurse: Analyze the newly found dependency for its own context.
+            await _recursive_search(call_num, args, context_file, dependency_set, lsp, visited, context_range)
 
 
 
-
+# not used
 async def find_test_file_context(args: argparse.Namespace, lsp: LanguageServer, test_file: Path) -> list[dict]:
     '''
         function to find all context files recursively, and return list of dictionary containing file path, start line and end line.
@@ -256,6 +321,7 @@ async def find_test_file_context(args: argparse.Namespace, lsp: LanguageServer, 
 
     return context_files
 
+# not used
 async def find_test_file_direct_context(args: argparse.Namespace, lsp: LanguageServer, test_file: Path) -> list[str]:
     '''
         get the direct context of a test file, doesn't recursively find dependencies
