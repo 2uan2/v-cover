@@ -26,6 +26,7 @@ class TestableFileFinder:
                 r".*Adapter\.java$",
             ],
             "exclude_patterns": [
+                r".*Application\.java$",
                 r".*Entity\.java$",
                 r".*Entities\.java$",
                 r".*Model\.java$",
