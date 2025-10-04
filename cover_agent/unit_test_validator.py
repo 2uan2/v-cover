@@ -2,6 +2,7 @@ import datetime
 import json
 import logging
 import os
+import asyncio
 
 from typing import Optional
 
@@ -39,11 +40,13 @@ class UnitTestValidator:
         additional_instructions: str,
         included_files: list,
         use_report_coverage_feature_flag: bool,
+        run_command_async: bool = False,
         project_root: str = "",
         logger: Optional[CustomLogger] = None,
         all_included_files: list = None,
         generate_log_files: bool = True,
         task_id: int = None,
+        semaphore: asyncio.Semaphore = None,
     ):
         """
         Initialize the UnitTestValidator class with the provided parameters.
@@ -96,7 +99,7 @@ class UnitTestValidator:
         self.agent_completion = agent_completion
         self.max_run_time_sec = max_run_time_sec
         self.generate_log_files = generate_log_files
-        self.task_id = task_id
+
 
         # Get the logger instance from CustomLogger
         self.logger = logger or CustomLogger.get_logger(__name__, task_id, os.path.basename(test_file_path), generate_log_files=self.generate_log_files)
@@ -117,6 +120,9 @@ class UnitTestValidator:
         self.total_output_token_count = 0
         self.testing_framework = "Unknown"
         self.code_coverage_report = ""
+        self.task_id = task_id
+        self.semaphore = semaphore
+        self.run_command_async = run_command_async 
 
         # Read self.source_file_path into a string
         with open(self.source_file_path, "r") as f:
@@ -230,8 +236,8 @@ class UnitTestValidator:
                 )
 
             relevant_line_number_to_insert_tests_after = find_unit_test_insert_line(self.language, self.project_root, self.test_file_path)
-            print("%%%%%%%%%%%%%%%%%%%%")
-            print("relavent line: ", relevant_line_number_to_insert_tests_after)
+            # print("%%%%%%%%%%%%%%%%%%%%")
+            # print("relavent line: ", relevant_line_number_to_insert_tests_after)
 
             
             relevant_line_number_to_insert_imports_after = find_import_insert_line(self.language, self.project_root, self.test_file_path)
@@ -291,12 +297,23 @@ class UnitTestValidator:
         - None
         """
         # Perform an initial build/test command to generate coverage report and get a baseline
-        self.logger.info(f'Running build/test command to generate coverage report: "{self.test_command}"')
-        stdout, stderr, exit_code, time_of_test_command = await Runner.run_command(
+        self.logger.info(f'😡😡😡😡😡😡😡😡😡😡😡😡😡😡Running build/test command to generate coverage report: "{self.test_command}"')
+        # self.logger.info(f'On the file whose content is: {self._read_file(self.test_file_path)}')
+        # don't work for built tool like maven cause it's too rigid
+        # if self.run_command_async == True:
+        stdout, stderr, exit_code, time_of_test_command = await Runner.async_run_command(
             command=self.test_command,
             max_run_time_sec=self.max_run_time_sec,
             cwd=self.test_command_dir,
+            # semaphore=self.semaphore,
+            logger=self.logger
         )
+        # else:
+        # stdout, stderr, exit_code, time_of_test_command = Runner.run_command(
+        #     command=self.test_command,
+        #     max_run_time_sec=self.max_run_time_sec,
+        #     cwd=self.test_command_dir,
+        # )
         assert (
             exit_code == 0
         ), f'Fatal: Error running test command. Are you sure the command is correct? "{self.test_command}"\nExit code {exit_code}. \nStdout: \n{stdout} \nStderr: \n{stderr}'
@@ -336,14 +353,23 @@ class UnitTestValidator:
         if included_files:
             included_files_content = []
             file_names = []
-            print("included files are:")
-            print(included_files)
+            # print("included files are:")
+            # print(included_files)
             for file_path, file_name, start_line, end_line in included_files:
                 try:
                     with open(file_path, "r") as file:
                         file_content = file.read()
-                        targeted_file_content = '\n'.join(file_content.split('\n')[start_line:end_line+1])
-                        included_files_content.append(targeted_file_content)
+                        # print("------------------------------------------------------------")
+                        # print("start_line: ")
+                        # print(start_line)
+                        # print("end_line: ")
+                        # print(end_line)
+                        # read entire file if [0:-1]
+                        if end_line == -1 and start_line == 0:
+                            included_files_content.append(file_content)
+                        else:
+                            targeted_file_content = '\n'.join(file_content.split('\n')[start_line:end_line+1])
+                            included_files_content.append(targeted_file_content)
                         file_names.append(file_path)
                 except IOError as e:
                     print(f"Error reading file {file_path}: {str(e)}")
@@ -386,217 +412,163 @@ class UnitTestValidator:
         with open(self.test_file_path, "r") as test_file:
             original_content = test_file.read()
 
-        try:
-            # Step 0: no pre-process.
-            # We asked the model that each generated test should be a self-contained independent test
-            test_code = generated_test.get("test_code", "").rstrip()
-            additional_imports = generated_test.get("new_imports_code", "").strip()
-            if additional_imports and additional_imports[0] == '"' and additional_imports[-1] == '"':
-                additional_imports = additional_imports.strip('"')
+        async with self.semaphore:
+            try:
+                # Step 0: no pre-process.
+                # We asked the model that each generated test should be a self-contained independent test
+                test_code = generated_test.get("test_code", "").rstrip()
+                additional_imports = generated_test.get("new_imports_code", "").strip()
+                if additional_imports and additional_imports[0] == '"' and additional_imports[-1] == '"':
+                    additional_imports = additional_imports.strip('"')
 
-            # check if additional_imports only contains '"':
-            if additional_imports and additional_imports == '""':
-                additional_imports = ""
-            relevant_line_number_to_insert_tests_after = self.relevant_line_number_to_insert_tests_after
-            relevant_line_number_to_insert_imports_after = self.relevant_line_number_to_insert_imports_after
+                # check if additional_imports only contains '"':
+                if additional_imports and additional_imports == '""':
+                    additional_imports = ""
+                relevant_line_number_to_insert_tests_after = self.relevant_line_number_to_insert_tests_after
+                relevant_line_number_to_insert_imports_after = self.relevant_line_number_to_insert_imports_after
 
-            needed_indent = self.test_headers_indentation
-            # remove initial indent of the test code, and insert the needed indent
-            test_code_indented = test_code
-            if needed_indent:
-                initial_indent = len(test_code) - len(test_code.lstrip())
-                delta_indent = int(needed_indent) - initial_indent
-                if delta_indent > 0:
-                    test_code_indented = "\n".join([delta_indent * " " + line for line in test_code.split("\n")])
-            test_code_indented = "\n" + test_code_indented.strip("\n") + "\n"
-            exit_code = 0
-            if test_code_indented and relevant_line_number_to_insert_tests_after:
-                # Step 1: Insert imports first, then insert the generated test code
-                additional_imports_lines = []
-                original_content_lines = original_content.split("\n")
+                needed_indent = self.test_headers_indentation
+                # remove initial indent of the test code, and insert the needed indent
+                test_code_indented = test_code
+                if needed_indent:
+                    initial_indent = len(test_code) - len(test_code.lstrip())
+                    delta_indent = int(needed_indent) - initial_indent
+                    if delta_indent > 0:
+                        test_code_indented = "\n".join([delta_indent * " " + line for line in test_code.split("\n")])
+                test_code_indented = "\n" + test_code_indented.strip("\n") + "\n"
+                exit_code = 0
+                if test_code_indented and relevant_line_number_to_insert_tests_after:
+                    # Step 1: Insert imports first, then insert the generated test code
+                    additional_imports_lines = []
+                    original_content_lines = original_content.split("\n")
 
-                # Build a deduplicated list of import lines
-                if additional_imports:
-                    raw_import_lines = additional_imports.split("\n")
-                    for line in raw_import_lines:
-                        # Only add if it's not already present (stripped match) in the file
-                        if line.strip() and all(
-                            line.strip() != existing.strip() for existing in original_content_lines
-                        ):
-                            additional_imports_lines.append(line)
+                    # Build a deduplicated list of import lines
+                    if additional_imports:
+                        raw_import_lines = additional_imports.split("\n")
+                        for line in raw_import_lines:
+                            # Only add if it's not already present (stripped match) in the file
+                            if line.strip() and all(
+                                line.strip() != existing.strip() for existing in original_content_lines
+                            ):
+                                additional_imports_lines.append(line)
 
-                inserted_lines_count = 0
-                if relevant_line_number_to_insert_imports_after and additional_imports_lines:
-                    inserted_lines_count = len(additional_imports_lines)
-                    original_content_lines = (
-                        original_content_lines[:relevant_line_number_to_insert_imports_after]
-                        + additional_imports_lines
-                        + original_content_lines[relevant_line_number_to_insert_imports_after:]
-                    )
-
-                # Offset the test insertion point by however many lines we just inserted
-                updated_test_insertion_point = relevant_line_number_to_insert_tests_after
-                if inserted_lines_count > 0:
-                    updated_test_insertion_point += inserted_lines_count
-
-                # Now insert the test code at 'updated_test_insertion_point'
-                test_code_lines = test_code_indented.split("\n")
-                processed_test_lines = (
-                    original_content_lines[:updated_test_insertion_point]
-                    + test_code_lines
-                    + original_content_lines[updated_test_insertion_point:]
-                )
-                processed_test = "\n".join(processed_test_lines)
-                with open(self.test_file_path, "w") as test_file:
-                    test_file.write(processed_test)
-                    test_file.flush()
-
-                # Step 2: Run the test using the Runner class
-                for i in range(self.num_attempts):
-                    self.logger.info(f'Running test with the following command: "{self.test_command}"')
-                    stdout, stderr, exit_code, time_of_test_command = await Runner.run_command(
-                        command=self.test_command,
-                        cwd=self.test_command_dir,
-                        max_run_time_sec=self.max_run_time_sec,
-                    )
-                    if exit_code != 0:
-                        break
-
-                # Step 3: Check for pass/fail from the Runner object
-                if exit_code != 0:
-                    # Test failed, roll back the test file to its original content
-                    with open(self.test_file_path, "w") as test_file:
-                        test_file.write(original_content)
-                    self.logger.info(f"Skipping a generated test that failed")
-                    fail_details = {
-                        "status": "FAIL",
-                        "reason": "Test failed",
-                        "exit_code": exit_code,
-                        "stderr": stderr,
-                        "stdout": stdout,
-                        "test": generated_test,
-                        "language": self.language,
-                        "source_file": self.source_code,
-                        "original_test_file": original_content,
-                        "processed_test_file": processed_test,
-                    }
-
-                    error_message = await self.extract_error_message(fail_details)
-                    if error_message:
-                        logging.error(f"Error message summary:\n{error_message}")
-
-                    self.failed_test_runs.append(
-                        {"code": generated_test, "error_message": error_message}
-                    )  # Append failure details to the list
-
-                    if "WANDB_API_KEY" in os.environ:
-                        fail_details["error_message"] = error_message
-                        root_span = Trace(
-                            name="fail_details_" + datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
-                            kind="llm",  # kind can be "llm", "chain", "agent" or "tool
-                            inputs={"test_code": fail_details["test"]},
-                            outputs=fail_details,
+                    inserted_lines_count = 0
+                    if relevant_line_number_to_insert_imports_after and additional_imports_lines:
+                        inserted_lines_count = len(additional_imports_lines)
+                        original_content_lines = (
+                            original_content_lines[:relevant_line_number_to_insert_imports_after]
+                            + additional_imports_lines
+                            + original_content_lines[relevant_line_number_to_insert_imports_after:]
                         )
-                        root_span.log(name="inference")
 
-                    return fail_details
+                    # Offset the test insertion point by however many lines we just inserted
+                    updated_test_insertion_point = relevant_line_number_to_insert_tests_after
+                    if inserted_lines_count > 0:
+                        updated_test_insertion_point += inserted_lines_count
 
-                # If test passed, check for coverage increase
-                try:
-                    new_percentage_covered, new_coverage_percentages = self.post_process_coverage_report(
-                        time_of_test_command
+                    # Now insert the test code at 'updated_test_insertion_point'
+                    test_code_lines = test_code_indented.split("\n")
+                    processed_test_lines = (
+                        original_content_lines[:updated_test_insertion_point]
+                        + test_code_lines
+                        + original_content_lines[updated_test_insertion_point:]
                     )
-
-                    if new_percentage_covered <= self.current_coverage:
-                        # Coverage has not increased, rollback the test by removing it from the test file
-                        with open(self.test_file_path, "w") as test_file:
-                            test_file.write(original_content)
-                            test_file.flush()
-                        self.logger.info("Test did not increase coverage. Rolling back.")
-                        fail_details = {
-                            "status": "FAIL",
-                            "reason": "Coverage did not increase. Maybe the test did run but did not increase coverage, or maybe the test execution was skipped due to some problem",
-                            "exit_code": exit_code,
-                            "stderr": stderr,
-                            "stdout": stdout,
-                            "test": generated_test,
-                            "language": self.language,
-                            "source_file": self.source_code,
-                            "original_test_file": original_content,
-                            "processed_test_file": processed_test,
-                        }
-                        self.failed_test_runs.append(
-                            {
-                                "code": fail_details["test"],
-                                "error_message": "Test did not increase code coverage",
-                            }
-                        )  # Append failure details to the list
-
-                        if "WANDB_API_KEY" in os.environ:
-                            root_span = Trace(
-                                name="fail_details_" + datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
-                                kind="llm",  # kind can be "llm", "chain", "agent" or "tool
-                                inputs={"test_code": fail_details["test"]},
-                                outputs=fail_details,
-                            )
-                            root_span.log(name="inference")
-
-                        return fail_details
-                except Exception as e:
-                    # Handle errors gracefully
-                    self.logger.error(f"Error during coverage verification: {e}")
-                    # roll back even in case of error
+                    processed_test = "\n".join(processed_test_lines)
                     with open(self.test_file_path, "w") as test_file:
-                        test_file.write(original_content)
+                        test_file.write(processed_test)
                         test_file.flush()
 
-                    fail_details = {
-                        "status": "FAIL",
-                        "reason": "Runtime error",
-                        "exit_code": exit_code,
-                        "stderr": stderr,
-                        "stdout": stdout,
-                        "test": generated_test,
-                        "language": self.language,
-                        "source_file": self.source_code,
-                        "original_test_file": original_content,
-                        "processed_test_file": processed_test,
-                    }
-                    self.failed_test_runs.append(
-                        {
-                            "code": fail_details["test"],
-                            "error_message": "Coverage verification error",
-                        }
-                    )  # Append failure details to the list
-                    return fail_details
-
-                # If we got here, everything passed and coverage increased - update current coverage and log success,
-                # and increase 'relevant_line_number_to_insert_tests_after' by the number of imports lines added
-                self.relevant_line_number_to_insert_tests_after += len(
-                    additional_imports_lines
-                )  # this is important, otherwise the next test will be inserted at the wrong line
-
-                for key in new_coverage_percentages:
-                    if (
-                        new_coverage_percentages[key] > self.last_coverage_percentages[key]
-                        and key == self.source_file_path.split("/")[-1]
-                    ):
-                        self.logger.info(
-                            f"Coverage for provided source file: {key} increased from {round(self.last_coverage_percentages[key] * 100, 2)} to {round(new_coverage_percentages[key] * 100, 2)}"
+                    # Step 2: Run the test using the Runner class
+                    for i in range(self.num_attempts):
+                        self.logger.info(f'Running test with the following command: "{self.test_command}"')
+                        # if self.run_command_async == True:
+                        stdout, stderr, exit_code, time_of_test_command = await Runner.async_run_command(
+                            command=self.test_command,
+                            cwd=self.test_command_dir,
+                            max_run_time_sec=self.max_run_time_sec,
+                            logger=self.logger
                         )
-                    elif new_coverage_percentages[key] > self.last_coverage_percentages[key]:
-                        self.logger.info(
-                            f"Coverage for non-source file: {key} increased from {round(self.last_coverage_percentages[key] * 100, 2)} to {round(new_coverage_percentages[key] * 100, 2)}"
-                        )
-                self.current_coverage = new_percentage_covered
-                self.last_coverage_percentages = new_coverage_percentages.copy()
-
-                self.logger.info(
-                    f"Test passed and coverage increased. Current coverage: {round(new_percentage_covered * 100, 2)}%"
-                )
+                        # else:
+                        # stdout, stderr, exit_code, time_of_test_command = Runner.run_command(
+                        #     command=self.test_command,
+                        #     cwd=self.test_command_dir,
+                        #     max_run_time_sec=self.max_run_time_sec,
+                        # )
+                        if exit_code != 0:
+                            break
+            except Exception as e:
+                self.logger.error(f"Error validating test: {e}")
+                with open(self.test_file_path, "w") as test_file:
+                    test_file.write(original_content)
+                    test_file.flush()
                 return {
-                    "status": "PASS",
-                    "reason": "",
+                    "status": "FAIL",
+                    "reason": f"Error validating test: {e}",
+                    "exit_code": None,
+                    "stderr": str(e),
+                    "stdout": "",
+                    "test": generated_test,
+                    "language": self.language,
+                    "source_file": self.source_code,
+                    "original_test_file": original_content,
+                    "processed_test_file": "N/A",
+                }
+
+        # Step 3: Check for pass/fail from the Runner object
+        if exit_code != 0:
+            # Test failed, roll back the test file to its original content
+            with open(self.test_file_path, "w") as test_file:
+                test_file.write(original_content)
+                test_file.flush()
+            self.logger.info(f"Skipping a generated test that failed")
+            fail_details = {
+                "status": "FAIL",
+                "reason": "Test failed",
+                "exit_code": exit_code,
+                "stderr": stderr,
+                "stdout": stdout,
+                "test": generated_test,
+                "language": self.language,
+                "source_file": self.source_code,
+                "original_test_file": original_content,
+                "processed_test_file": processed_test,
+            }
+
+            error_message = await self.extract_error_message(fail_details)
+            if error_message:
+                logging.error(f"Error message summary:\n{error_message}")
+
+            self.failed_test_runs.append(
+                {"code": generated_test, "error_message": error_message}
+            )  # Append failure details to the list
+
+            if "WANDB_API_KEY" in os.environ:
+                fail_details["error_message"] = error_message
+                root_span = Trace(
+                    name="fail_details_" + datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
+                    kind="llm",  # kind can be "llm", "chain", "agent" or "tool
+                    inputs={"test_code": fail_details["test"]},
+                    outputs=fail_details,
+                )
+                root_span.log(name="inference")
+
+            return fail_details
+
+        # If test passed, check for coverage increase
+        try:
+            new_percentage_covered, new_coverage_percentages = self.post_process_coverage_report(
+                time_of_test_command
+            )
+
+            if new_percentage_covered <= self.current_coverage:
+                # Coverage has not increased, rollback the test by removing it from the test file
+                with open(self.test_file_path, "w") as test_file:
+                    test_file.write(original_content)
+                    test_file.flush()
+                self.logger.info("Test did not increase coverage. Rolling back.")
+                fail_details = {
+                    "status": "FAIL",
+                    "reason": "Coverage did not increase. Maybe the test did run but did not increase coverage, or maybe the test execution was skipped due to some problem",
                     "exit_code": exit_code,
                     "stderr": stderr,
                     "stdout": stdout,
@@ -606,20 +578,87 @@ class UnitTestValidator:
                     "original_test_file": original_content,
                     "processed_test_file": processed_test,
                 }
+                self.failed_test_runs.append(
+                    {
+                        "code": fail_details["test"],
+                        "error_message": "Test did not increase code coverage",
+                    }
+                )  # Append failure details to the list
+
+                if "WANDB_API_KEY" in os.environ:
+                    root_span = Trace(
+                        name="fail_details_" + datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
+                        kind="llm",  # kind can be "llm", "chain", "agent" or "tool
+                        inputs={"test_code": fail_details["test"]},
+                        outputs=fail_details,
+                    )
+                    root_span.log(name="inference")
+
+                return fail_details
         except Exception as e:
-            self.logger.error(f"Error validating test: {e}")
-            return {
+            # Handle errors gracefully
+            self.logger.error(f"Error during coverage verification: {e}")
+            # roll back even in case of error
+            with open(self.test_file_path, "w") as test_file:
+                test_file.write(original_content)
+                test_file.flush()
+
+            fail_details = {
                 "status": "FAIL",
-                "reason": f"Error validating test: {e}",
-                "exit_code": None,
-                "stderr": str(e),
-                "stdout": "",
+                "reason": "Runtime error",
+                "exit_code": exit_code,
+                "stderr": stderr,
+                "stdout": stdout,
                 "test": generated_test,
                 "language": self.language,
                 "source_file": self.source_code,
                 "original_test_file": original_content,
-                "processed_test_file": "N/A",
+                "processed_test_file": processed_test,
             }
+            self.failed_test_runs.append(
+                {
+                    "code": fail_details["test"],
+                    "error_message": "Coverage verification error",
+                }
+            )  # Append failure details to the list
+            return fail_details
+
+        # If we got here, everything passed and coverage increased - update current coverage and log success,
+        # and increase 'relevant_line_number_to_insert_tests_after' by the number of imports lines added
+        self.relevant_line_number_to_insert_tests_after += len(
+            additional_imports_lines
+        )  # this is important, otherwise the next test will be inserted at the wrong line
+
+        for key in new_coverage_percentages:
+            if (
+                new_coverage_percentages[key] > self.last_coverage_percentages[key]
+                and key == self.source_file_path.split("/")[-1]
+            ):
+                self.logger.info(
+                    f"Coverage for provided source file: {key} increased from {round(self.last_coverage_percentages[key] * 100, 2)} to {round(new_coverage_percentages[key] * 100, 2)}"
+                )
+            elif new_coverage_percentages[key] > self.last_coverage_percentages[key]:
+                self.logger.info(
+                    f"Coverage for non-source file: {key} increased from {round(self.last_coverage_percentages[key] * 100, 2)} to {round(new_coverage_percentages[key] * 100, 2)}"
+                )
+        self.current_coverage = new_percentage_covered
+        self.last_coverage_percentages = new_coverage_percentages.copy()
+
+        self.logger.info(
+            f"Test passed and coverage increased. Current coverage: {round(new_percentage_covered * 100, 2)}%"
+        )
+        return {
+            "status": "PASS",
+            "reason": "",
+            "exit_code": exit_code,
+            "stderr": stderr,
+            "stdout": stdout,
+            "test": generated_test,
+            "language": self.language,
+            "source_file": self.source_code,
+            "original_test_file": original_content,
+            "processed_test_file": processed_test,
+        }
 
     def to_dict(self):
         return {
