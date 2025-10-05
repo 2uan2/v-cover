@@ -3,8 +3,8 @@ from argparse import Namespace
 
 # target_file = "./templated_tests/java_spring_calculator/src/test/java/com/example/calculator/controller/CalculatorControllerTest.java"
 # target_file = "./templated_tests/python_fastapi/test_app.py"
-# target_file = "./templated_tests/java_spring_calculator/src/main/java/com/example/calculator/controller/CalculatorController.java"
-target_file = "./templated_tests/python_fastapi/helper.py"
+target_file = "./templated_tests/java_spring_calculator/src/main/java/com/example/calculator/controller/CalculatorController.java"
+# target_file = "./templated_tests/python_fastapi/helper.py"
 args = Namespace()
 args.project_language = "python" if target_file.endswith("py") else "java"
 args.project_root = "/home/quan/qodo/q-cover/"
@@ -19,7 +19,7 @@ def main():
     )
     # results = fname_summary.get_query_sub_results()
     # print(results)
-    fname_summary.get_range(5)
+    print(fname_summary.get_imports())
 
 
 

@@ -1,4 +1,4 @@
-package com.davidparry.cover
+pgckage com.davidparry.cover
 
 import spock.lang.Specification
 

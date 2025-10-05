@@ -7,7 +7,7 @@ from cover_agent.custom_logger import CustomLogger
 
 class Runner:
     @staticmethod
-    async def async_run_command(command: str, max_run_time_sec: int = None, cwd: str = None, logger: CustomLogger = None):
+    async def async_run_command(command: str, max_run_time_sec: int = None, semaphore: asyncio.Semaphore = None, cwd: str = None, logger: CustomLogger = None):
         """
         Executes a shell command in a specified working directory and returns its output, error, and exit code.
 
@@ -22,51 +22,39 @@ class Runner:
         """
         command_start_time = int(time.time() * 1000)  # Get the current time in milliseconds
 
-        # env = os.environ.copy()
-        # agent_java_home = os.environ.get("COVER_AGENT_JAVA_HOME")
-        # if agent_java_home:
-        #     env["JAVA_HOME"] = agent_java_home
 
-        # if not semaphore:
-        proc = await asyncio.create_subprocess_shell(
-            command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            shell=True,
-            cwd=cwd,
-            # env=env,
-        )
-        try:
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=max_run_time_sec)
-        except asyncio.TimeoutError:
-            proc.kill()
-            await proc.wait()  # Ensure process is fully terminated
-            return b"", b"Command timed out", -1, command_start_time
-        stdout, stderr = await proc.communicate()
-        # else:
-        #     if logger:
-        #         logger.info(f"[Semaphore] Task for command starting with '{command}' is WAITING.")
-        #     async with semaphore:
-        #         # max_run_time_sec = max_run_time_sec * 10
-        #         if logger:
-        #             logger.info(f"[Semaphore] Task for command starting with '{command}' has ACQUIRED permit.")
-        #         proc = await asyncio.create_subprocess_shell(
-        #             command,
-        #             stdout=asyncio.subprocess.PIPE,
-        #             stderr=asyncio.subprocess.PIPE,
-        #             shell=True,
-        #             cwd=cwd,
-        #             env=env,
-        #         )
-        #         # try:
-        #         #     stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=max_run_time_sec)
-        #         # except asyncio.TimeoutError:
-        #         #     proc.kill()
-        #         #     await proc.wait()  # Ensure process is fully terminated
-        #         #     return b"", b"Command timed out", -1, command_start_time
-        #         stdout, stderr = await proc.communicate()
-        #         if logger:
-        #             logger.info(f"[Semaphore] Task for command starting with '{command}' has FINISHED. Releasing permit.")
+        if not semaphore:
+            proc = await asyncio.create_subprocess_shell(
+                command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                shell=True,
+                cwd=cwd,
+            )
+            stdout, stderr = await proc.communicate()
+        else:
+            if logger:
+                logger.info(f"[Semaphore] Task for command starting with '{command}' is WAITING.")
+            async with semaphore:
+                # max_run_time_sec = max_run_time_sec * 10
+                if logger:
+                    logger.info(f"[Semaphore] Task for command starting with '{command}' has ACQUIRED permit.")
+                proc = await asyncio.create_subprocess_shell(
+                    command,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    shell=True,
+                    cwd=cwd,
+                )
+                # try:
+                #     stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=max_run_time_sec)
+                # except asyncio.TimeoutError:
+                #     proc.kill()
+                #     await proc.wait()  # Ensure process is fully terminated
+                #     return b"", b"Command timed out", -1, command_start_time
+                stdout, stderr = await proc.communicate()
+                if logger:
+                    logger.info(f"[Semaphore] Task for command starting with '{command}' has FINISHED. Releasing permit.")
 
         return stdout, stderr, proc.returncode, command_start_time
 

@@ -11,6 +11,15 @@
 (interface_declaration
   name: (identifier) @name.definition.interface) @definition.interface
 
+; New query to find a method within an interface
+(interface_declaration
+  body: (interface_body
+    (method_declaration
+      name: (identifier) @name.definition.method.interface
+    ) @definition.method.interface
+  )
+)
+
 (type_list
   (type_identifier) @name.reference.implementation) @reference.implementation
 

@@ -151,7 +151,6 @@ class CoverAgent:
             max_run_time_sec=self.config.max_run_time_sec,
             generate_log_files=self.generate_log_files,
             task_id=self.task_id,
-            run_command_async=self.config.run_command_async,
             semaphore=self.semaphore,
         )
 

@@ -55,7 +55,7 @@
                 <configuration>
                 
                 <append>false</append>
-              <outputDirectory>${custom.outputDirectory}</outputDirectory></configuration>
+              </configuration>
             </plugin>
         </plugins>
     </build>

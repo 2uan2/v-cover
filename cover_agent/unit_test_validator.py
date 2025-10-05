@@ -305,7 +305,7 @@ class UnitTestValidator:
             command=self.test_command,
             max_run_time_sec=self.max_run_time_sec,
             cwd=self.test_command_dir,
-            # semaphore=self.semaphore,
+            semaphore=self.semaphore,
             logger=self.logger
         )
         # else:
@@ -350,12 +350,13 @@ class UnitTestValidator:
         Returns:
             str: A string containing the concatenated contents of the included files, or an empty string if the input list is empty.
         """
+        print("ORIGINAL INCLUDED FILES ARE: ", included_files)
         if included_files:
             included_files_content = []
             file_names = []
             # print("included files are:")
             # print(included_files)
-            for file_path, file_name, start_line, end_line in included_files:
+            for file_path, _, _, start_line, end_line in included_files:
                 try:
                     with open(file_path, "r") as file:
                         file_content = file.read()
@@ -378,6 +379,7 @@ class UnitTestValidator:
                 for i, content in enumerate(included_files_content):
                     out_str += f"file_path: `{file_names[i]}`\ncontent:\n```\n{content}\n```\n"
 
+            print(f"===================\n FILES ARE: {out_str}")
             return out_str.strip()
         return ""
 
@@ -486,6 +488,7 @@ class UnitTestValidator:
                             command=self.test_command,
                             cwd=self.test_command_dir,
                             max_run_time_sec=self.max_run_time_sec,
+                            # semaphore=self.semaphore,
                             logger=self.logger
                         )
                         # else:

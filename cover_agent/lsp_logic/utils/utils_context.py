@@ -143,8 +143,6 @@ async def find_all_context(args: argparse.Namespace, lsp: LanguageServer, test_f
     context_files = [] #set()
     # visited = set()
 
-    await _recursive_search(0, args, test_file, context_files, lsp)
-
     if args.project_language == "java" and test_file.endswith(".java"):
         potential_primary = find_java_primary_file(test_file, args.project_root)
         if potential_primary:
@@ -153,6 +151,9 @@ async def find_all_context(args: argparse.Namespace, lsp: LanguageServer, test_f
             # default to name being class name and start and end line as the start and line of file
             context_file = (primary_file, os.path.basename(primary_file).split('.')[0], 'class', 0, -1) 
             context_files.append(context_file)
+            await _recursive_search(0, args, potential_primary, context_files, lsp)
+
+    await _recursive_search(0, args, test_file, context_files, lsp)
 
     return context_files
 
@@ -202,6 +203,17 @@ async def _recursive_search(call_num: int, args: argparse.Namespace, file: Path,
         project_base_path=args.project_root,
     )
     query_results, captures = fname_summary.get_query_results_in_range(range[0], range[1])
+    imports = fname_summary.get_imports()
+    if imports:
+        # All imports are from the same file, so we can get the fname from the first one.
+        file_path = Path(imports[0]['fname']).resolve()
+        
+        # The get_imports() list is sorted, so find the min start and max end lines.
+        start_line = imports[0]['start_line']
+        end_line = imports[-1]['end_line']
+        
+        # Create a single dependency entry for the entire import block.
+        dependency_set.append((str(file_path), "import block", "import", start_line, end_line))
     # print("query_results, captures = ", len(query_results), len(captures))
     # print("======")
     # print("query results are found: ", query_results)

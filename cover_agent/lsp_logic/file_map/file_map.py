@@ -89,7 +89,10 @@ class FileMap:
         '''
             find all import lines inside current file using tree-sitter
         '''
-        return self.get_tag("import")
+        imports = self.get_tag("import")
+        for import_line in imports:
+            import_line['tag'] = 'import'
+        return imports
 
     def get_tag(self, tag: str) -> list[dict]:
         '''
@@ -121,6 +124,7 @@ class FileMap:
                 result = dict(
                     fname=fname_rel,
                     name=node.text.decode("utf-8"),
+                    tag=tag,
                     start_line=node.start_point[0],
                     start_column=node.start_point[1],  # in order to find indentation or test file
                     end_line=node.end_point[0],
@@ -181,7 +185,7 @@ class FileMap:
             if (line <= end_line and line >= start_line and start_line != end_line):# and is_method):
                 potential.append((start_line, end_line))
 
-        print('ranges: ', potential)
+        # print('ranges: ', potential)
         if not potential:
             return None
 
@@ -288,6 +292,7 @@ class FileMap:
             result = dict(
                 fname=fname_rel,
                 name=node.text.decode("utf-8"),
+                tag=tag,
                 kind=kind,
                 line=node.start_point[0],
             )
