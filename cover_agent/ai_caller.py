@@ -169,11 +169,11 @@ class AICaller:
         else:
             # Non-streaming response is a CompletionResponse object
             content = response.choices[0].message.content
-            self.logger.info(f"Printing results from LLM model... \n {content}")
-            # print(content)
             usage = response.usage
             prompt_tokens = int(usage.prompt_tokens)
             completion_tokens = int(usage.completion_tokens)
+            self.logger.info(f"Printing results from LLM model... \n {content}")
+            self.logger.info(f"Printed results costed: {prompt_tokens} - {completion_tokens}")
 
         if "WANDB_API_KEY" in os.environ:
             try:

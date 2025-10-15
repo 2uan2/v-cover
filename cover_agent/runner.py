@@ -56,7 +56,7 @@ class Runner:
                 if logger:
                     logger.info(f"[Semaphore] Task for command starting with '{command}' has FINISHED. Releasing permit.")
 
-        return stdout, stderr, proc.returncode, command_start_time
+        return stdout.decode(errors='ignore'), stderr.decode(errors='ignore'), proc.returncode, command_start_time
 
     @staticmethod
     def run_command(command: str, max_run_time_sec: int, cwd: str = None):

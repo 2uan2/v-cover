@@ -146,10 +146,10 @@ async def find_all_context(args: argparse.Namespace, lsp: LanguageServer, test_f
     if args.project_language == "java" and test_file.endswith(".java"):
         potential_primary = find_java_primary_file(test_file, args.project_root)
         if potential_primary:
-            primary_file = potential_primary
+            primary_file = Path(potential_primary).resolve()
 
             # default to name being class name and start and end line as the start and line of file
-            context_file = (primary_file, os.path.basename(primary_file).split('.')[0], 'class', 0, -1) 
+            context_file = (str(primary_file), os.path.basename(primary_file).split('.')[0], 'class', 0, -1) 
             context_files.append(context_file)
             await _recursive_search(0, args, potential_primary, context_files, lsp)
 

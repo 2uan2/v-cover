@@ -29,19 +29,22 @@ async def process_test_file(
         semaphore: asyncio.Semaphore = None,
         task_id: int = None,
         logger: Optional[CustomLogger] = None
-) -> (str, int, int, bool, str):
+) -> (str, int, int, bool, bool, str):
     """
     Process a single test file asynchronously.
     Returns:
         test_file (str): The initialized AI caller instance
         input_token_count (int): The amount of token used as input for processing this file
         output_token_count (int): The amount of token used as output for processign this file
+        target_reached (bool): Whether this CoverAgent has reached coverage target
         success (bool): Whether generation was a success or not
         error (str): The error string, if any
     """
 
     total_input_token = 0
     total_output_token = 0
+    generated_tests = []
+    accepted_tests = []
     try:
         # create a logger, each logger is assoc
         logger = logger or CustomLogger.get_logger(__name__, task_id, os.path.basename(test_file), generate_log_files=False)
@@ -74,6 +77,7 @@ async def process_test_file(
         # print(all_context_no_test)
         total_input_token += context_input_token
         total_output_token += context_output_token
+        target_reached = False
 
 
         if source_file:
@@ -91,18 +95,20 @@ async def process_test_file(
                 config = CoverAgentConfig.from_cli_args_with_defaults(args_copy)
                 agent = await CoverAgent.create(config=config, task_id=task_id, built_tool_adapter=adapter, semaphore=semaphore)
 
-                input_token, output_token = await agent.run()
+                input_token, output_token, target_reached, generated_tests, accepted_tests = await agent.run()
                 total_input_token += input_token
                 total_output_token += output_token
-                return (test_file, total_input_token, total_output_token, True, None)
+                generated_tests = generated_tests 
+                accepted_tests = accepted_tests 
+                return (test_file, total_input_token, total_output_token, target_reached, generated_tests, accepted_tests,  True, None)
             except Exception as e:
                 logger.error(f"Error running CoverAgent: {e}")
-                return (test_file, total_input_token, total_output_token, False, f"CoverAgent error: {str(e)}")
+                return (test_file, total_input_token, total_output_token, target_reached, generated_tests, accepted_tests, False, f"CoverAgent error: {str(e)}")
         else:
-            return (test_file, total_input_token, total_output_token, False, "No source file found")
+            return (test_file, total_input_token, total_output_token, target_reached, generated_tests, accepted_tests, False, "No source file found")
     except Exception as e:
         logger.error(f"Error processing: {e}")
-        return (test_file, total_input_token, total_output_token, False, f"Processing error: {str(e)}")
+        return (test_file, total_input_token, total_output_token, False, [], [], False, f"Processing error: {str(e)}")
 
 
 async def generate_test_file(source_file, test_file_path, test_content, context_helper, task_id):
@@ -206,41 +212,119 @@ async def run():
             tasks = [process_test_file(test_file=test_file, adapter=adapter, context_helper=context_helper, args=args, task_id=task_id, semaphore=semaphore) 
                      for task_id, test_file in enumerate(test_files, 1)]
             results = await asyncio.gather(*tasks)
-            total_input_token = sum([input for f, input, output, r, e in results])
-            total_output_token = sum([output for f, input, output, r, e in results])
+            total_input_token = sum([input for f, input, output, _, _, _, r, e in results])
+            total_output_token = sum([output for f, input, output, _, _, _, r, e in results])
         finally:
             if adapter:
                 adapter.cleanup_environment()
         
-        # Generate statistics
-        print("\n" + "="*80)
-        print("EXECUTION SUMMARY")
-        print("="*80)
-        
-        successful_files = [(f, r, e) for f, input, output, r, e in results if r]
-        failed_files = [(f, r, e) for f, input, output, r, e in results if not r]
-        
-        if failed_files:
-            print("\n❌ Failed files:")
-            for file, _, error in failed_files:
-                print(f"   - {file}")
-                if error:
-                    print(f"     Error: {error}")
+        process_and_display_metrics(results)
 
-        print(f"\nTotal test files processed: {len(results)}")
-        print(f"✁ESuccessful: {len(successful_files)}")
-        print(f"❁EFailed: {len(failed_files)}")
-        
-        if successful_files:
-            print("\n✁ESuccessfully processed files:")
-            for file, _, _ in successful_files:
-                print(f"   - {file}")
-        
-        if total_input_token:
-            print(f"\nSystem used {total_input_token} input token in total")
-            print(f"\nSystem used {total_output_token} output token in total")
-        print("\n" + "="*80)
 
+def process_and_display_metrics(results):
+    """
+        Aggregates results from multiple CoverAgent runs and displays a
+        detailed metrics summary.
+
+        Args:
+            results (list): A list of tuples, where each tuple contains the
+            result of processing one file. The expected format is:
+                    (test_file, total_input_token, total_output_token,
+                    target_reached, generated_tests, accepted_tests,
+                    success, error)
+    """
+    # --- Initialize overall counters ---
+    grand_total_generated = 0
+    grand_total_accepted = 0
+    grand_total_input_tokens = 0
+    grand_total_output_tokens = 0
+
+    total_files_processed = len(results)
+    files_that_succeeded = []
+    files_that_failed = []
+    files_that_reached_coverage = 0
+
+    # --- Process each file's result ---
+    for result_tuple in results:
+        (
+            test_file,
+            total_input_token,
+            total_output_token,
+            target_reached,
+            generated_tests, 
+            accepted_tests,  
+            success,
+            error,
+        ) = result_tuple
+
+        grand_total_input_tokens += total_input_token
+        grand_total_output_tokens += total_output_token
+
+        if not success:
+            files_that_failed.append(f"  - {test_file} (Error: {error})")
+            continue
+
+        # --- Aggregate metrics for successful files ---
+        if target_reached:
+            files_that_reached_coverage += 1
+
+        # Format the generated/accepted counts as "3 + 4 + 2 = 9"
+        generated_sum = sum(generated_tests)
+        accepted_sum = sum(accepted_tests)
+
+        grand_total_generated += generated_sum
+        grand_total_accepted += accepted_sum
+
+        generated_str = " + ".join(map(str, generated_tests))
+        accepted_str = " + ".join(map(str, accepted_tests))
+
+        # Build the formatted string for this file
+        file_summary = (
+            f"  - {test_file}:\n"
+            f"      Input: {total_input_token}\n"
+            f"      Output: {total_output_token}\n"
+            f"      Generated: {generated_str} = {generated_sum}\n"
+            f"      Accepted:  {accepted_str} = {accepted_sum}\n"
+            f"      Coverage Target Reached: {'Yes' if target_reached else 'No'}"
+        )
+        files_that_succeeded.append(file_summary)
+
+    # --- Calculate overall acceptance rate ---
+    acceptance_rate = (
+        (grand_total_accepted / grand_total_generated * 100)
+        if grand_total_generated > 0
+        else 0
+    )
+
+    # --- Display the final summary ---
+    print("\n" + "="*80)
+    print("AGGREGATE EXECUTION SUMMARY")
+    print("="*80)
+
+    print("\n--- Overall Stats ---")
+    print(f"Files Processed: {total_files_processed}")
+    print(f"  - Succeeded: {len(files_that_succeeded)}")
+    print(f"  - Failed:    {len(files_that_failed)}")
+    print(f"Coverage Target Met: {files_that_reached_coverage} / {len(files_that_succeeded)} successful files")
+    print(f"Total Input Tokens:  {grand_total_input_tokens}")
+    print(f"Total Output Tokens: {grand_total_output_tokens}")
+
+    print("\n--- Test Generation & Acceptance ---")
+    print(f"Total Tests Generated: {grand_total_generated}")
+    print(f"Total Tests Accepted:  {grand_total_accepted}")
+    print(f"Overall Acceptance Rate: {acceptance_rate:.2f}%")
+
+    if files_that_succeeded:
+        print("\n--- Breakdown by Successful File ---")
+        for file_summary in files_that_succeeded:
+            print(file_summary)
+
+    if files_that_failed:
+        print("\n--- Breakdown by Failed File ---")
+        for file_summary in files_that_failed:
+            print(file_summary)
+
+    print("\n" + "="*80)
 
 def main():
     asyncio.run(run())

@@ -60,6 +60,11 @@ class CoverAgent:
         self.generate_log_files = not config.suppress_log_files
         self.adapter = built_tool_adapter
         self.task_id = task_id
+        self.total_input_token_count = 0
+        self.total_output_token_count = 0
+
+        self.generated_tests_per_iteration = []
+        self.accepted_tests_per_iteration = []
 
         # Initialize logger with file generation flag
         self.logger = logger or CustomLogger.get_logger(__name__, task_id, os.path.basename(config.test_file_path), generate_log_files=self.generate_log_files)
@@ -93,12 +98,19 @@ class CoverAgent:
                 new_command_line = adapt_test_command(test_command, test_file_relative_path)
 
             if not new_command_line:
-                new_command_line, _, _, _ = await self.agent_completion.adapt_test_command_for_a_single_test_via_ai(
-                # Use AI to adapt test commands
+                (
+                    new_command_line,
+                    prompt_tokens,
+                    completion_tokens,
+                    _,
+                ) = await self.agent_completion.adapt_test_command_for_a_single_test_via_ai(
+                    # Use AI to adapt test commands
                     test_file_relative_path=test_file_relative_path,
                     test_command=test_command,
                     project_root_dir=self.config.test_command_dir,
                 )
+                self.total_input_token_count += prompt_tokens
+                self.total_output_token_count += completion_tokens
 
         # Update the test command if successfully modified
         if new_command_line:
@@ -299,10 +311,16 @@ class CoverAgent:
         self.logger.info("Starting test generation and validation.")
         generated_tests_dict = await self.test_gen.generate_tests(failed_test_runs, language, test_framework, coverage_report)
 
+        num_generated_tests_dict = len(generated_tests_dict.get("new_tests", []))
+        self.generated_tests_per_iteration.append(num_generated_tests_dict)
+
         try:
             test_results = [
                 await self.test_validator.validate_test(test) for test in generated_tests_dict.get("new_tests", [])
             ]
+
+            num_accepted = sum(1 for r in test_results if r.get("status") == "PASS")
+            self.accepted_tests_per_iteration.append(num_accepted)
 
             # Insert results into database
             if self.has_test_db():
@@ -371,8 +389,16 @@ class CoverAgent:
                 self.logger.info(failure_message)
 
         # Log token usage
-        total_input_token = self.test_gen.total_input_token_count + self.test_validator.total_input_token_count
-        total_output_token = self.test_gen.total_output_token_count + self.test_validator.total_output_token_count
+        total_input_token = (
+            self.test_gen.total_input_token_count
+            + self.test_validator.total_input_token_count
+            + self.total_input_token_count
+        )
+        total_output_token = (
+            self.test_gen.total_output_token_count
+            + self.test_validator.total_output_token_count
+            + self.total_output_token_count
+        )
         self.logger.info(
             f"Total number of input tokens used for LLM model {self.config.model}: "
             f"{total_input_token}"
@@ -399,7 +425,7 @@ class CoverAgent:
             self.logger.info(f"Current Coverage: {round(self.test_validator.current_coverage * 100, 2)}%")
         self.logger.info(f"Desired Coverage: {self.test_validator.desired_coverage}%")
 
-    async def run(self) -> (int, int):
+    async def run(self) -> (int, int, list, list, bool):
         """
         Execute the main test generation loop until coverage goals are met or iterations exhausted.
 
@@ -408,6 +434,13 @@ class CoverAgent:
         2. Repeatedly generating and validating tests
         3. Checking progress after each iteration
         4. Finalizing and reporting results
+
+        Returns:
+            input token count (int): amount of input token that this CoverAgent uses
+            output token count (int): amount of output token that this CoverAgent uses
+            target_reached (bool): whether the coverage target was reached
+            generated_tests_per_iteration (list[int]): list of amount of tests that were generated per iterations
+            accepted_tests_per_iteration (list[int]): list of amount of tests that were accepted per iterations
         """
         iteration_count = 0
         failed_test_runs, language, test_framework, coverage_report = await self.init()
@@ -424,4 +457,4 @@ class CoverAgent:
 
             iteration_count += 1
 
-        return self.finalize_test_generation(iteration_count)
+        return (*self.finalize_test_generation(iteration_count), target_reached, self.generated_tests_per_iteration, self.accepted_tests_per_iteration)

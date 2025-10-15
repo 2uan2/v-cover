@@ -9,7 +9,7 @@ SETTINGS_FILES = [
     "test_generation_prompt.toml",
     "language_extensions.toml",
     "analyze_suite_test_headers_indentation.toml",
-    "analyze_suite_test_headers_indentation_improved.toml",
+    "test_generation_prompt_improved.toml",
     "analyze_suite_test_insert_line.toml",
     "analyze_test_run_failure.toml",
     "analyze_test_against_context.toml",

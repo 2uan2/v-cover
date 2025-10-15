@@ -283,7 +283,7 @@ class DefaultAgentCompletion(AgentCompletionABC):
                 - The final constructed prompt (str).
         """
         prompt = self._build_prompt(
-            file="analyze_suite_test_headers_indentation_improved",
+            file="analyze_suite_test_headers_indentation",
             language=language,
             test_file_name=test_file_name,
             test_file=test_file,

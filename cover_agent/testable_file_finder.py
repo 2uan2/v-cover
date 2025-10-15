@@ -10,10 +10,10 @@ class TestableFileFinder:
     TESTABLE_PATTERNS: Dict[str, Dict[str, List[str]]] = {
         "java": {
             "include_patterns": [
+                # r".*\.java$",
                 r".*Controller\.java$",
                 r".*Service\.java$",
-                r".*Repository\.java$",
-                r".*Mapper\.java$",
+                # r".*Mapper\.java$",
                 r".*Utils?\.java$",
                 r".*Helper\.java$",
                 r".*Manager\.java$",
@@ -22,11 +22,12 @@ class TestableFileFinder:
                 r".*Validator\.java$",
                 r".*Converter\.java$",
                 r".*Factory\.java$",
-                r".*Builder\.java$",
+                # r".*Builder\.java$",
                 r".*Adapter\.java$",
             ],
             "exclude_patterns": [
                 r".*Application\.java$",
+                r".*Repository\.java$",
                 r".*Entity\.java$",
                 r".*Entities\.java$",
                 r".*Model\.java$",
