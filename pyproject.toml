@@ -43,6 +43,7 @@ python-levenshtein = "^0.27.1"
 tree-sitter-languages = "^1.10.2"
 claude-code-sdk = "==0.0.11"
 nest_asyncio = "^1.6.0"
+fastmcp = "^2.12.5"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.4"
