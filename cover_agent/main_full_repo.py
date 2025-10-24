@@ -139,6 +139,7 @@ async def run():
 
     settings = get_settings().get("default")
     args: argparse.Namespace = parse_args_full_repo(settings)
+    args.project_root = str(Path(args.project_root).resolve())
 
     semaphore = asyncio.Semaphore(1)
 
